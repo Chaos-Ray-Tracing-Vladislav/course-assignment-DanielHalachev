@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+# Build Directory
+build
+
+#Cache Directory
+.cache
+
+# settings.json
+settings.json
