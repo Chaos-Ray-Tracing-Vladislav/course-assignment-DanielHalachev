@@ -97,12 +97,16 @@ void RayTracer::render() {
 #endif  // MEASURE_TIME
 }
 
-Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) const {
+Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   if (depth > MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
   std::optional<IntersectionInformation> intersectionInformation = trace(ray);
   if (intersectionInformation.has_value()) {
+#if defined(BARYCENTRIC) && BARYCENTRIC
+    return Color(intersectionInformation->u, intersectionInformation->v,
+                 1 - intersectionInformation->u - intersectionInformation->v);
+#endif  // BARYCENTRIC
     const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
     const Mesh &mesh = *intersectionInformation->object;
@@ -117,7 +121,7 @@ Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) con
           lightDirection.normalize();
           float angle = std::max(0.0f, lightDirection.dot(hitNormal));
 
-          Ray<Shadow> shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection);
+          Ray shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection, RayType::Shadow);
           bool shadowRayIntersection = hasIntersection(shadowRay);
 
           if (!shadowRayIntersection) {
@@ -141,8 +145,7 @@ Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) con
   return this->scene.sceneSettings.sceneBackgroundColor;
 }
 
-template <RayType T>
-std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray<T> &ray) const {
+std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
   float minDistance = std::numeric_limits<float>::infinity();
   const Mesh *intersectedObject = nullptr;
   const Intersection *intersection = nullptr;
@@ -161,12 +164,17 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray<T> 
     }
   }
   if (intersection != nullptr) {
+    //
+#if defined(BARYCENTRIC) && BARYCENTRIC
+    return IntersectionInformation{intersectedObject, intersection->hitPoint, intersection->hitNormal, intersection->u,
+                                   intersection->v};
+#endif  // BARYCENTRIC
     return IntersectionInformation{intersectedObject, intersection->hitPoint, intersection->hitNormal};
   }
   return {};
 }
 
-bool RayTracer::hasIntersection(const Ray<Shadow> &ray) const {
+bool RayTracer::hasIntersection(const Ray &ray) const {
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
       if (ray.intersectWithTriangle(triangle, object.material.smoothShading).has_value()) {
