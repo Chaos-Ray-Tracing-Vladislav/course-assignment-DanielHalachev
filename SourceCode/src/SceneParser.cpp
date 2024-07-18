@@ -151,8 +151,8 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
       assert(!materialAlbedoValue.IsNull() && materialAlbedoValue.IsArray());
       const rapidjson::Value& materialShadingValue = material.FindMember(SceneParser::MATERIAL_SHADING)->value;
       assert(!materialShadingValue.IsNull() && materialShadingValue.IsBool());
-      Material temp = {Color::generateRandom(), Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3)),
-                       materialType, materialShadingValue.GetBool()};
+      Material temp(Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3)), materialType,
+                    materialShadingValue.GetBool());
       materials.push_back(temp);
     }
   }

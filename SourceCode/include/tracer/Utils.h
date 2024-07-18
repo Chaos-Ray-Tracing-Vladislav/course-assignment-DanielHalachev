@@ -17,12 +17,10 @@ struct PPMColor {
 enum MaterialType { Diffuse, Reflect };
 
 struct Material {
-  Color color;
   Albedo albedo;
   MaterialType type;
   bool smoothShading;
 
   Material();
-  Material(const Color &color, const Albedo &albedo, const MaterialType &type = Diffuse,
-           const bool smoothShading = false);
+  explicit Material(const Albedo &albedo, const MaterialType &type = Diffuse, const bool smoothShading = false);
 };

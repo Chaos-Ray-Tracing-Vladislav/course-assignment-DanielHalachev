@@ -109,6 +109,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
     const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
     const Mesh &mesh = *intersectionInformation->object;
+
     Vector finalColor(0, 0, 0);
 
     switch (mesh.material.type) {
@@ -131,16 +132,22 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
         return finalColor;
       }
       case Reflect: {
-        Ray reflectionRay = {intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal)};
-        finalColor += shootRay(reflectionRay, depth + 1) * mesh.material.albedo;
+        Ray reflectionRay(intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal).getNormalized(),
+                          Primary);
+        Color reflectionColor = shootRay(reflectionRay, depth + 1);
+        finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
+                            mesh.material.albedo[1] * reflectionColor[1],  // green
+                            mesh.material.albedo[2] * reflectionColor[2]   // blue
+        );
         return finalColor;
       }
       default: {
-        // std::cout << "fail\n";
+        // neither reflective, nor diffusive
         return this->scene.sceneSettings.sceneBackgroundColor;
       }
     }
   }
+  // if there is no intersection
   return this->scene.sceneSettings.sceneBackgroundColor;
 }
 

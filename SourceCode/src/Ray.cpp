@@ -14,14 +14,9 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  if (this->rayType == Primary && normalDotRayDirection >= 0) {
+  if (this->rayType == Primary && normalDotRayDirection == 0) {
     return {};
   }
-
-  // if N . R ~= 0, the ray is parallel to the plane - no intersection or too far away
-  //   if (std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()) {
-  //     return {};
-  //   }
 
   float distanceToPlane = -(triangle[0].position).dot(triangleNormal);
 
