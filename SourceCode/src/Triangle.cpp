@@ -11,7 +11,6 @@
 
 Triangle::Triangle(Vertex &v1, Vertex &v2, Vertex &v3) : vertices{&v1, &v2, &v3} {
   this->normal = this->calculateNormal();
-  this->normal.normalize();
 }
 
 Vertex &Triangle::operator[](unsigned short i) {
@@ -55,5 +54,5 @@ bool Triangle::pointIsInTriangle(const Vector &point) const {
 }
 
 float Triangle::area() const {
-  return this->calculateNormal().length() / 2;
+  return this->normal.length() / 2;
 }

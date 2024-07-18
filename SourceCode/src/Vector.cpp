@@ -10,11 +10,11 @@ Vector::Vector() : values{{0.0f, 0.0f, 0.0f}} {}
 
 Vector::Vector(float x, float y, float z) : values{{x, y, z}} {}
 
-Vector::Vector(const std::vector<float>& values) {
-  if (values.size() != 3) {
+Vector::Vector(const std::vector<float>& vectorValues) {
+  if (vectorValues.size() != 3) {
     throw std::invalid_argument("Vector must have exactly 3 elements.");
   }
-  this->values = {values[0], values[1], values[2]};
+  this->values = {vectorValues[0], vectorValues[1], vectorValues[2]};
 }
 
 const float& Vector::operator[](const unsigned short index) const {
@@ -96,6 +96,12 @@ void Vector::normalize() {
   values[2] *= length;
 }
 
+Vector Vector::getNormalized() const {
+  Vector temp(*this);
+  temp.normalize();
+  return temp;
+}
+
 float Vector::length() const {
   return std::sqrt(this->values[0] * this->values[0] + this->values[1] * this->values[1] +
                    this->values[2] * this->values[2]);
@@ -103,7 +109,6 @@ float Vector::length() const {
 
 Vector Vector::reflect(const Vector& normal) const {
   Vector result = *this - (2 * this->dot(normal)) * normal;
-  // result.normalize();
   return result;
 }
 

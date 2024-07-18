@@ -104,8 +104,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   std::optional<IntersectionInformation> intersectionInformation = trace(ray);
   if (intersectionInformation.has_value()) {
 #if defined(BARYCENTRIC) && BARYCENTRIC
-    return Color(intersectionInformation->u, intersectionInformation->v,
-                 1 - intersectionInformation->u - intersectionInformation->v);
+    return Color(intersectionInformation->u, intersectionInformation->v, 0);
 #endif  // BARYCENTRIC
     const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
@@ -132,8 +131,8 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
         return finalColor;
       }
       case Reflect: {
-        Ray reflection = {intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal)};
-        finalColor += shootRay(ray, depth + 1) * mesh.material.albedo;
+        Ray reflectionRay = {intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal)};
+        finalColor += shootRay(reflectionRay, depth + 1) * mesh.material.albedo;
         return finalColor;
       }
       default: {
@@ -148,7 +147,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
   float minDistance = std::numeric_limits<float>::infinity();
   const Mesh *intersectedObject = nullptr;
-  const Intersection *intersection = nullptr;
+  Intersection intersection;
 
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
@@ -158,18 +157,19 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
         if (distance < minDistance) {
           minDistance = distance;
           intersectedObject = &object;
-          intersection = &tempIntersection.value();
+          intersection = tempIntersection.value();
         }
       }
     }
   }
-  if (intersection != nullptr) {
+  if (intersectedObject != nullptr) {
     //
 #if defined(BARYCENTRIC) && BARYCENTRIC
-    return IntersectionInformation{intersectedObject, intersection->hitPoint, intersection->hitNormal, intersection->u,
-                                   intersection->v};
+    IntersectionInformation temp{intersectedObject, intersection.hitPoint, intersection.hitNormal, intersection.u,
+                                 intersection.v};
+    return temp;
 #endif  // BARYCENTRIC
-    return IntersectionInformation{intersectedObject, intersection->hitPoint, intersection->hitNormal};
+    return IntersectionInformation{intersectedObject, intersection.hitPoint, intersection.hitNormal};
   }
   return {};
 }

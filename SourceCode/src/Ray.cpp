@@ -14,7 +14,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  if (this->rayType == Primary && normalDotRayDirection == 0) {
+  if (this->rayType == Primary && normalDotRayDirection >= 0) {
     return {};
   }
 
@@ -38,13 +38,14 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   Vector hitNormal = triangleNormal;
   float u = 0;
   float v = 0;
+  Vector v0p = intersectionPoint - triangle[0].position;
+  Vector v0v1 = triangle[1].position - triangle[0].position;
+  Vector v0v2 = triangle[2].position - triangle[0].position;
+  float area = (v0v1 * v0v2).length();
+  u = (v0p * v0v2).length() / area;
+  v = (v0v1 * v0p).length() / area;
   if (smoothShading) {
-    Vector v0P = intersectionPoint - triangle[0].position;
-    u = (v0P * (triangle[2].position - triangle[0].position)).length() / triangle.area();
-    v = ((triangle[1].position - triangle[0].position) * v0P).length() / triangle.area();
-
     hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
-    // hitNormal.normalize();
   }
 
 #if defined(BARYCENTRIC) && BARYCENTRIC
