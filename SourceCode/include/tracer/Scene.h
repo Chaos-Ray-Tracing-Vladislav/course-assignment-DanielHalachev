@@ -46,7 +46,7 @@ struct Mesh {
 
       Triangle tr(v0, v1, v2);
       triangles.push_back(tr);
-      Vector faceNormal = tr.calculateNormal();
+      Vector faceNormal = tr.getTriangleNormal();
 
       this->vertices[index0].normal += faceNormal;
       this->vertices[index1].normal += faceNormal;

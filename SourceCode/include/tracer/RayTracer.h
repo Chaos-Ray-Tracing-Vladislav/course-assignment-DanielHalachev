@@ -8,7 +8,10 @@
 #include "tracer/Vector.h"
 
 typedef Vector ColorVector;
-#define MAX_DEPTH 5
+const int MAX_DEPTH = 5;
+const float SHADOW_BIAS = 0.0001f;
+const float REFLECTION_BIAS = 1e-4;
+const float REFRACTION_BIAS = 1e-4;
 
 class RayTracer {
  private:
@@ -30,7 +33,7 @@ class RayTracer {
   std::vector<std::vector<Ray>> pixelRays;
   std::vector<std::vector<Color>> colorBuffer;
   void updateRays();
-  Color shootRay(const Ray &ray, const unsigned int depth = 0) const;
+  Color shootRay(const Ray &ray, const unsigned int depth = 0, const float IOR = 0) const;
   Color shade(const Ray &ray) const;
   std::optional<RayTracer::IntersectionInformation> trace(const Ray &ray) const;
   bool hasIntersection(const Ray &ray) const;

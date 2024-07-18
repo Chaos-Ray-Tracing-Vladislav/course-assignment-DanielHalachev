@@ -15,5 +15,5 @@ std::ostream &operator<<(std::ostream &os, const struct PPMColor &color) {
 
 Material::Material() : albedo{0.82f, 0.82f, 0.82f}, type{Diffuse}, smoothShading{false} {};
 
-Material::Material(const Albedo &albedo, const MaterialType &type, const bool smoothShading)
-    : albedo{albedo}, type(type), smoothShading(smoothShading){};
+Material::Material(const Albedo &albedo, const MaterialType &type, const bool smoothShading, const float ior)
+    : albedo{albedo}, type(type), smoothShading(smoothShading), ior{ior} {};

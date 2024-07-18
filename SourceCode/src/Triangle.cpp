@@ -1,6 +1,7 @@
 #include <tracer/Triangle.h>
 
 #include <array>
+#include <limits>
 
 #include "tracer/Vector.h"
 
@@ -36,21 +37,22 @@ const Vector &Triangle::getTriangleNormal() const {
 bool Triangle::pointIsInTriangle(const Vector &point) const {
   Vector e0 = this->vertices[1]->position - this->vertices[0]->position;
   Vector c0 = point - this->vertices[0]->position;
-  if (this->normal.dot(e0 * c0) < 0) {
+  if (this->normal.dot(e0 * c0) < -std::numeric_limits<float>::epsilon()) {
     return false;
   }
 
   Vector e1 = this->vertices[2]->position - this->vertices[1]->position;
   Vector c1 = point - this->vertices[1]->position;
-  if (this->normal.dot(e1 * c1) < 0) {
+  if (this->normal.dot(e1 * c1) < -std::numeric_limits<float>::epsilon()) {
     return false;
   }
 
   Vector e2 = this->vertices[0]->position - this->vertices[2]->position;
   Vector c2 = point - this->vertices[2]->position;
-  if (this->normal.dot(e2 * c2) < 0) {
+  if (this->normal.dot(e2 * c2) < -std::numeric_limits<float>::epsilon()) {
     return false;
   }
+
   return true;
 }
 

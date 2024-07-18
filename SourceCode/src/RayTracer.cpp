@@ -1,7 +1,9 @@
 
 #include "tracer/RayTracer.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -97,7 +99,7 @@ void RayTracer::render() {
 #endif  // MEASURE_TIME
 }
 
-Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
+Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float IOR) const {
   if (depth > MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
@@ -131,15 +133,47 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
         }
         return finalColor;
       }
-      case Reflect: {
-        Ray reflectionRay(intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal).getNormalized(),
-                          Primary);
-        Color reflectionColor = shootRay(reflectionRay, depth + 1);
+      case Reflective: {
+        Ray reflectionRay(intersectionPoint + hitNormal * REFLECTION_BIAS,
+                          ray.direction.reflect(hitNormal).getNormalized(), Primary);
+        Color reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
         finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
                             mesh.material.albedo[1] * reflectionColor[1],  // green
                             mesh.material.albedo[2] * reflectionColor[2]   // blue
         );
         return finalColor;
+      }
+      case Refractive: {
+        float eta1 = IOR;
+        float eta2 = mesh.material.ior;
+        Vector normal = hitNormal;
+        float incidentDotNormal = ray.direction.dot(normal);
+        if (incidentDotNormal > 0) {
+          std::swap(eta1, eta2);
+          normal = -1 * normal;
+        }
+
+        Color reflectionColor(0, 0, 0);
+        Color refractionColor(0, 0, 0);
+
+        float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
+
+        // if there is no total internal refraction, a refraction ray exists
+        if (fresnelCoefficient < 1) {
+          float cosineAlpha = -std::clamp(-1.0f, 1.0f, incidentDotNormal);
+          float sineBeta = std::sqrt(std::max(0.0f, 1 - cosineAlpha * cosineAlpha)) * eta1 / eta2;
+          float cosineBeta = std::sqrt(std::max(0.0f, 1 - sineBeta * sineBeta));
+          Vector refractionDirection = -cosineBeta * normal                                      // A
+                                       + (ray.direction + cosineAlpha * normal).getNormalized()  // C
+                                             * sineBeta;
+          Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection);
+          refractionColor = shootRay(refractionRay, depth + 1, mesh.material.ior);
+        }
+
+        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized());
+        reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
+
+        return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
       }
       default: {
         // neither reflective, nor diffusive
