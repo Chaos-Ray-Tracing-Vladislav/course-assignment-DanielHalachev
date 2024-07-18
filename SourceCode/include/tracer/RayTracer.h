@@ -33,10 +33,10 @@ class RayTracer {
   std::vector<std::vector<Ray>> pixelRays;
   std::vector<std::vector<Color>> colorBuffer;
   void updateRays();
-  Color shootRay(const Ray &ray, const unsigned int depth = 0, const float IOR = 0) const;
+  Color shootRay(const Ray &ray, const unsigned int depth = 0, const float IOR = 1.0f) const;
   Color shade(const Ray &ray) const;
   std::optional<RayTracer::IntersectionInformation> trace(const Ray &ray) const;
-  bool hasIntersection(const Ray &ray) const;
+  bool hasIntersection(const Ray &ray, const float distanceToLight) const;
 
  public:
   explicit RayTracer(const std::string &pathToScene);

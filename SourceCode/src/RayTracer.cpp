@@ -118,13 +118,14 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
       case Diffuse: {
         for (auto &light : this->scene.lights) {
           Vector lightDirection = light.position - intersectionPoint;
+          float distanceToLight = lightDirection.length();
           float sphereRadius = lightDirection.length();
           float sphereArea = 4 * sphereRadius * sphereRadius * PI;
           lightDirection.normalize();
           float angle = std::max(0.0f, lightDirection.dot(hitNormal));
 
           Ray shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection, RayType::Shadow);
-          bool shadowRayIntersection = hasIntersection(shadowRay);
+          bool shadowRayIntersection = hasIntersection(shadowRay, distanceToLight);
 
           if (!shadowRayIntersection) {
             float lightContribution = (static_cast<float>(light.intentsity) / sphereArea * angle);
@@ -144,7 +145,8 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         return finalColor;
       }
       case Refractive: {
-        float eta1 = IOR;
+        // float eta1 = IOR;
+        float eta1 = 1.0f;
         float eta2 = mesh.material.ior;
         Vector normal = hitNormal;
         float incidentDotNormal = ray.direction.dot(normal);
@@ -156,11 +158,16 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         Color reflectionColor(0, 0, 0);
         Color refractionColor(0, 0, 0);
 
-        float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
+        float cosineAlpha = -incidentDotNormal;
+        cosineAlpha = std::clamp(-1.0f, 1.0f, cosineAlpha);
+        float sineAlpha = std::sqrt(1 - cosineAlpha * cosineAlpha);
 
-        // if there is no total internal refraction, a refraction ray exists
-        if (fresnelCoefficient < 1) {
-          float cosineAlpha = -std::clamp(-1.0f, 1.0f, incidentDotNormal);
+        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized());
+        reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
+
+        if (sineAlpha < eta1 / eta2) {
+          float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
+
           float sineBeta = std::sqrt(std::max(0.0f, 1 - cosineAlpha * cosineAlpha)) * eta1 / eta2;
           float cosineBeta = std::sqrt(std::max(0.0f, 1 - sineBeta * sineBeta));
           Vector refractionDirection = -cosineBeta * normal                                      // A
@@ -168,12 +175,10 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
                                              * sineBeta;
           Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection);
           refractionColor = shootRay(refractionRay, depth + 1, mesh.material.ior);
+          return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
         }
 
-        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized());
-        reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
-
-        return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
+        return reflectionColor;
       }
       default: {
         // neither reflective, nor diffusive
@@ -215,10 +220,11 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
   return {};
 }
 
-bool RayTracer::hasIntersection(const Ray &ray) const {
+bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
-      if (ray.intersectWithTriangle(triangle, object.material.smoothShading).has_value()) {
+      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
+      if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
         return true;
       }
     }

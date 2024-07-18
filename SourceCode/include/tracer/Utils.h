@@ -24,5 +24,5 @@ struct Material {
 
   Material();
   explicit Material(const Albedo &albedo, const MaterialType &type = Diffuse, const bool smoothShading = false,
-                    const float ior = 0);
+                    const float ior = 1.0f);
 };
