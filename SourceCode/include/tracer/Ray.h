@@ -4,6 +4,7 @@
 
 #include "Vector.h"
 #include "tracer/Triangle.h"
+#include "tracer/Utils.h"
 
 struct Intersection {
   Vector hitPoint;
@@ -16,7 +17,7 @@ struct Intersection {
 #endif  // BARYCENTRIC
 };
 
-enum RayType { Primary, Shadow };
+enum RayType { Primary, Shadow, Reflection, Refraction };
 
 class Ray {
  public:
@@ -28,5 +29,6 @@ class Ray {
   Ray(const Vector &origin, const Vector &direction, const RayType &rayType = Primary);
 
   // TODO (maybe move to Triangle.h)
-  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle, const bool smoothShading = false) const;
+  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle, const MaterialType = Diffuse,
+                                                    const bool smoothShading = false) const;
 };

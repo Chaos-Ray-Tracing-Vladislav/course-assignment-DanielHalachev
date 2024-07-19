@@ -71,7 +71,7 @@ void RayTracer::updateRays() {
       Vector direction(x, y, -1.0);
       direction = direction * this->scene.camera.getRotationMatrix();
       direction.normalize();
-      this->pixelRays[pixelRow][pixelCol] = Ray(this->scene.camera.getPosition(), direction);
+      this->pixelRays[pixelRow][pixelCol] = Ray(this->scene.camera.getPosition(), direction, Primary);
     }
   }
   this->rayUpdateRequired = false;
@@ -136,7 +136,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
       }
       case Reflective: {
         Ray reflectionRay(intersectionPoint + hitNormal * REFLECTION_BIAS,
-                          ray.direction.reflect(hitNormal).getNormalized(), Primary);
+                          ray.direction.reflect(hitNormal).getNormalized(), Reflection);
         Color reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
         finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
                             mesh.material.albedo[1] * reflectionColor[1],  // green
@@ -145,8 +145,8 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         return finalColor;
       }
       case Refractive: {
-        // float eta1 = IOR;
-        float eta1 = 1.0f;
+        float eta1 = IOR;
+        // float eta1 = 1.0f;
         float eta2 = mesh.material.ior;
         Vector normal = hitNormal;
         float incidentDotNormal = ray.direction.dot(normal);
@@ -159,21 +159,25 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         Color refractionColor(0, 0, 0);
 
         float cosineAlpha = -incidentDotNormal;
-        cosineAlpha = std::clamp(-1.0f, 1.0f, cosineAlpha);
+        cosineAlpha = std::clamp(cosineAlpha, -1.0f, 1.0f);
         float sineAlpha = std::sqrt(1 - cosineAlpha * cosineAlpha);
 
-        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized());
+        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized(),
+                          Reflection);
         reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
 
         if (sineAlpha < eta1 / eta2) {
+          // float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
+          // float fresnelCoefficient = R0 + (1 - R0) * std::powf(1.0f + incidentDotNormal, 5);
           float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
 
-          float sineBeta = std::sqrt(std::max(0.0f, 1 - cosineAlpha * cosineAlpha)) * eta1 / eta2;
-          float cosineBeta = std::sqrt(std::max(0.0f, 1 - sineBeta * sineBeta));
-          Vector refractionDirection = -cosineBeta * normal                                      // A
-                                       + (ray.direction + cosineAlpha * normal).getNormalized()  // C
-                                             * sineBeta;
-          Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection);
+          float sineBeta = (sineAlpha * eta1) / eta2;
+          sineBeta = std::clamp(sineBeta, -1.0f, 1.0f);
+          float cosineBeta = std::sqrt(1 - sineBeta * sineBeta);
+          Vector refractionDirection = -1 * cosineBeta * normal                                  // A
+                                       + (ray.direction + cosineAlpha * normal).getNormalized()  // C // B
+                                             * sineBeta;                                         //   // B
+          Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection, Refraction);
           refractionColor = shootRay(refractionRay, depth + 1, mesh.material.ior);
           return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
         }
@@ -181,7 +185,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         return reflectionColor;
       }
       default: {
-        // neither reflective, nor diffusive
+        // neither refractive, reflective, nor diffusive
         return this->scene.sceneSettings.sceneBackgroundColor;
       }
     }
@@ -197,10 +201,14 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
 
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
+      std::optional<Intersection> tempIntersection =
+          ray.intersectWithTriangle(triangle, object.material.type, object.material.smoothShading);
       if (tempIntersection.has_value()) {
         float distance = (tempIntersection.value().hitPoint - ray.origin).length();
         if (distance < minDistance) {
+          if (ray.rayType == Shadow && object.material.type == Refractive) {
+            continue;
+          }
           minDistance = distance;
           intersectedObject = &object;
           intersection = tempIntersection.value();
@@ -223,7 +231,11 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
 bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
+      if (ray.rayType == Shadow && object.material.type == Refractive) {
+        continue;
+      }
+      std::optional<Intersection> intersection =
+          ray.intersectWithTriangle(triangle, object.material.type, object.material.smoothShading);
       if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
         return true;
       }

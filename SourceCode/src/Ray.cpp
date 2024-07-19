@@ -1,23 +1,25 @@
 #include <tracer/Ray.h>
 
 // #include <limits>
-#include <cmath>
 #include <limits>
 #include <optional>
 
 #include "tracer/Triangle.h"
+#include "tracer/Utils.h"
 #include "tracer/Vector.h"
 
 Ray::Ray() = default;
 Ray::Ray(const Vector &origin, const Vector &direction, const RayType &rayType)
     : origin(origin), direction(direction), rayType(rayType){};
 
-std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const bool smoothShading) const {
+std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const MaterialType materialType,
+                                                       const bool smoothShading) const {
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  if (this->rayType != Shadow &&
-      (normalDotRayDirection >= 0 || std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon())) {
+  if (this->rayType != Shadow && materialType != Refractive && normalDotRayDirection >= 0
+      // std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()  //
+  ) {
     return {};
   }
 
