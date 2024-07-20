@@ -145,14 +145,15 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         return finalColor;
       }
       case Refractive: {
-        float eta1 = IOR;
-        // float eta1 = 1.0f;
+        // float eta1 = IOR;
+        float eta1 = 1.0f;
         float eta2 = mesh.material.ior;
         Vector normal = hitNormal;
         float incidentDotNormal = ray.direction.dot(normal);
         if (incidentDotNormal > 0) {
           std::swap(eta1, eta2);
           normal = -1 * normal;
+          incidentDotNormal = -incidentDotNormal;
         }
 
         Color reflectionColor(0, 0, 0);
@@ -167,9 +168,9 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
         reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
 
         if (sineAlpha < eta1 / eta2) {
-          // float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
-          // float fresnelCoefficient = R0 + (1 - R0) * std::powf(1.0f + incidentDotNormal, 5);
-          float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
+          float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
+          float fresnelCoefficient = R0 + (1 - R0) * std::powf(1.0f + incidentDotNormal, 5);
+          // float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
 
           float sineBeta = (sineAlpha * eta1) / eta2;
           sineBeta = std::clamp(sineBeta, -1.0f, 1.0f);
@@ -206,9 +207,6 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
       if (tempIntersection.has_value()) {
         float distance = (tempIntersection.value().hitPoint - ray.origin).length();
         if (distance < minDistance) {
-          if (ray.rayType == Shadow && object.material.type == Refractive) {
-            continue;
-          }
           minDistance = distance;
           intersectedObject = &object;
           intersection = tempIntersection.value();
@@ -230,10 +228,10 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
 
 bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
   for (auto &object : this->scene.objects) {
+    if (ray.rayType == Shadow && object.material.type == Refractive) {
+      continue;
+    }
     for (auto &triangle : object.triangles) {
-      if (ray.rayType == Shadow && object.material.type == Refractive) {
-        continue;
-      }
       std::optional<Intersection> intersection =
           ray.intersectWithTriangle(triangle, object.material.type, object.material.smoothShading);
       if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {

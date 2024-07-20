@@ -1,7 +1,6 @@
 #include <tracer/Ray.h>
 
 // #include <limits>
-#include <limits>
 #include <optional>
 
 #include "tracer/Triangle.h"
@@ -17,7 +16,9 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  if (this->rayType != Shadow && materialType != Refractive && normalDotRayDirection >= 0
+  // material shouldn't be refractive, because refraction direction doesn't matter for intersection
+  // its debatable whether it should be reflective
+  if (this->rayType == Primary && normalDotRayDirection >= 0
       // std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()  //
   ) {
     return {};
@@ -26,7 +27,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   float distanceToPlane = -(triangle[0].position).dot(triangleNormal);
 
   float t = -(triangleNormal.dot(this->origin) + distanceToPlane) / normalDotRayDirection;
-  if (t < 0 || t >= std::numeric_limits<float>::max()) {
+  if (t < 0) {
     return {};
   }
   Vector intersectionPoint = this->origin + this->direction * t;
