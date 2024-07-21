@@ -1,4 +1,5 @@
 #pragma once
+#include <random>
 #include <string>
 #include <vector>
 
@@ -8,13 +9,21 @@
 #include "tracer/Vector.h"
 
 typedef Vector ColorVector;
+#if defined(GLOBAL_ILLUMINATION) && GLOBAL_ILLUMINATION
+const int MAX_DEPTH = 3;
+const unsigned int DEFAULT_SAMPLE_SIZE = 4;
+#else
 const int MAX_DEPTH = 5;
-const float SHADOW_BIAS = 0.0001f;
+#endif  // GLOBAL_ILLUMINATION
+const float SHADOW_BIAS = 1e-4;
 const float REFLECTION_BIAS = 1e-4;
 const float REFRACTION_BIAS = 1e-4;
+const float MONTE_CARLO_BIAS = 1e-4;
 
 class RayTracer {
  private:
+  static thread_local std::default_random_engine engine;
+  static thread_local std::uniform_real_distribution<float> distribution;
   struct IntersectionInformation {
     const Mesh *const object;
     Vector intersectionPoint;

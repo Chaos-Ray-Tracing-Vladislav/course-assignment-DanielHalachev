@@ -1,6 +1,7 @@
 #include <tracer/Ray.h>
 
 // #include <limits>
+#include <cmath>
 #include <optional>
 
 #include "tracer/Triangle.h"
@@ -18,7 +19,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
 
   // material shouldn't be refractive, because refraction direction doesn't matter for intersection
   // its debatable whether it should be reflective
-  if (this->rayType == Primary && normalDotRayDirection >= 0
+  if (this->rayType == PrimaryRay && normalDotRayDirection >= 0
       // std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()  //
   ) {
     return {};

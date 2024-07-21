@@ -17,16 +17,16 @@ struct Intersection {
 #endif  // BARYCENTRIC
 };
 
-enum RayType { Primary, Shadow, Reflection, Refraction };
+enum RayType { PrimaryRay, ShadowRay, ReflectionRay, RefractionRay, DiffuseRay };
 
 class Ray {
  public:
   Vector origin;
   Vector direction;
-  RayType rayType = Primary;
+  RayType rayType = PrimaryRay;
 
   Ray();
-  Ray(const Vector &origin, const Vector &direction, const RayType &rayType = Primary);
+  Ray(const Vector &origin, const Vector &direction, const RayType &rayType = PrimaryRay);
 
   // TODO (maybe move to Triangle.h)
   std::optional<Intersection> intersectWithTriangle(const Triangle &triangle, const MaterialType = Diffuse,
