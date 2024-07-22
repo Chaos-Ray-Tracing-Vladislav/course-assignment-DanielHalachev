@@ -1,7 +1,9 @@
 #include "tracer/Scene.h"
 
+#include <utility>
+
 Mesh::Mesh(const Material &material, const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indexes)
-    : material(material), vertices{vertices}, indexes{indexes} {
+    : material{material}, vertices{vertices}, indexes{indexes} {
   triangles.reserve(indexes.size() / 3);
   // calculate vertex normals
   // and add triangles
@@ -27,12 +29,14 @@ Mesh::Mesh(const Material &material, const std::vector<Vertex> &vertices, const 
   }
 }
 
-Mesh::Mesh(Mesh &&other) noexcept {
-  this->material = other.material;
-  this->vertices = std::move(other.vertices);
-  this->indexes = std::move(other.indexes);
-  this->triangles = std::move(other.triangles);
-}
+Mesh::Mesh(Mesh &&other) noexcept
+    : material(other.material),
+      vertices{std::move(other.vertices)},
+      indexes{std::move(other.indexes)},
+      triangles{std::move(other.triangles)} {}
+
+Mesh::Mesh(const Mesh &other)
+    : material(other.material), vertices{other.vertices}, indexes{other.indexes}, triangles{other.triangles} {}
 
 Scene::Scene() = default;
 
@@ -53,7 +57,8 @@ Scene &Scene::operator=(Scene &&other) noexcept {
     this->camera = other.camera;
 #if (defined USE_TEXTURES) && USE_TEXTURES
     this->textures = std::move(other.textures);
-#endif  // USE_TEXTURES    this->materials = std::move(other.materials);
+#endif  // USE_TEXTURES
+    this->materials = std::move(other.materials);
     this->lights = std::move(other.lights);
     this->objects = std::move(other.objects);
   }

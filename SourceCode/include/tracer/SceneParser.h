@@ -35,7 +35,8 @@ class SceneParser {
   static std::vector<Texture*> parseTextures(const rapidjson::Document& document, const std::string& basePath);
   static std::vector<Material> parseMaterials(const rapidjson::Document& document,
                                               const std::vector<Texture*>& textures = {});
-  static std::vector<Mesh> parseSceneObjects(const rapidjson::Document& document, std::vector<Material>& materials);
+  static std::vector<Mesh> parseSceneObjects(const rapidjson::Document& document,
+                                             const std::vector<Material>& materials);
 
  public:
   explicit SceneParser();

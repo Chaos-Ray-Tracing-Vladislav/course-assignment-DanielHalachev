@@ -263,7 +263,7 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
 }
 
 std::vector<Mesh> SceneParser::parseSceneObjects(const rapidjson::Document& document,
-                                                 std::vector<Material>& materials) {
+                                                 const std::vector<Material>& materials) {
   std::vector<Mesh> meshes;
 
   const rapidjson::Value& objectsValue = document.FindMember(SceneParser::SCENE_OBJECTS)->value;
@@ -272,11 +272,10 @@ std::vector<Mesh> SceneParser::parseSceneObjects(const rapidjson::Document& docu
     for (auto& object : objectsValue.GetArray()) {
       std::vector<Vertex> vertices;
       std::vector<unsigned int> triangleTriples;
-      Material material;
 
       const rapidjson::Value& materialIndexValue = object.FindMember(SceneParser::MATERIAL_INDEX)->value;
       assert(!materialIndexValue.IsNull() && materialIndexValue.IsUint());
-      material = materials[materialIndexValue.GetUint()];
+      const Material& material = materials[materialIndexValue.GetUint()];
 
       const rapidjson::Value& verticesValue = object.FindMember(SceneParser::VERTICES)->value;
       assert(!verticesValue.IsNull() && verticesValue.IsArray());

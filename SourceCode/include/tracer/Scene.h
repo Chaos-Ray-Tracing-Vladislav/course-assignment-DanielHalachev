@@ -22,16 +22,16 @@ struct Light {
 
 class Mesh {
  public:
-  Material material;
+  const Material &material;
   std::vector<Vertex> vertices;
   std::vector<unsigned int> indexes;
   std::vector<Triangle> triangles;
 
  public:
   Mesh(const Material &material, const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indexes);
+  Mesh(const Mesh &other);
   Mesh(Mesh &&other) noexcept;
 
-  Mesh(const Mesh &other) = delete;
   Mesh &operator=(const Mesh &other) = delete;
   Mesh &operator=(Mesh &&other) = delete;
 };
@@ -49,8 +49,10 @@ struct Scene {
   Scene();
 
   Scene(Scene &&other) noexcept;
-
   Scene &operator=(Scene &&other) noexcept;
+
+  Scene(const Scene &other) = delete;
+  Scene &operator=(const Scene &other) = delete;
 
   ~Scene();
 };

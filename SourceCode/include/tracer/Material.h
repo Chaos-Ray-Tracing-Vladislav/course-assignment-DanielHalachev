@@ -9,15 +9,15 @@ enum MaterialType { Diffuse, Reflective, Constant, Refractive };
 class Material {
 #if (defined USE_TEXTURES) && USE_TEXTURES
  public:
-  const Texture *texture = nullptr;
+  const Texture &texture;
 
  public:
   explicit Material(const Texture &texture, const Albedo &albedo, const MaterialType &type = Diffuse,
                     const bool smoothShading = false, const float ior = 1.0f);
   Material(const Material &other);
-  Material &operator=(const Material &other);
-  Material &operator=(Material &&other) noexcept;
   Material(Material &&other) noexcept;
+  Material &operator=(const Material &other) = delete;
+  Material &operator=(Material &&other) noexcept = delete;
 #else
  public:
   explicit Material(const Albedo &albedo, const MaterialType &type = Diffuse, const bool smoothShading = false,
@@ -28,12 +28,4 @@ class Material {
   MaterialType type;
   bool smoothShading;
   float ior;
-
- public:
- public:
-  Material();
-  const Albedo &getAlbedo() const;
-  const MaterialType getType() const;
-  const bool hasSmoothShading() const;
-  const float getIOR() const;
 };

@@ -130,7 +130,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 #if (defined USE_TEXTURES) && USE_TEXTURES
             finalColor +=
                 directLightContribution *
-                mesh.material.texture->getColor(*intersectionInformation->triangle,
+                mesh.material.texture.getColor(*intersectionInformation->triangle,
                                                 Vector(intersectionInformation->u, intersectionInformation->v,
                                                        1.0f - intersectionInformation->u - intersectionInformation->v));
 #else
