@@ -11,7 +11,6 @@
 #include "rapidjson/document.h"
 #include "rapidjson/istreamwrapper.h"
 #include "tracer/Scene.h"
-#include "tracer/Utils.h"
 #include "tracer/Vector.h"
 
 const char* SceneParser::SETTINGS = "settings";
@@ -19,10 +18,11 @@ const char* SceneParser::BG_COLOR = "background_color";
 const char* SceneParser::IMAGE_SETTINGS = "image_settings";
 const char* SceneParser::CAMERA = "camera";
 const char* SceneParser::CAMERA_MATRIX = "matrix";
+const char* SceneParser::TEXTURES = "textures";
 const char* SceneParser::MATERIALS = "materials";
 const char* SceneParser::MATERIAL_INDEX = "material_index";
-const char* SceneParser::MATERIAL_TYPE = "type";
-const char* SceneParser::MATERIAL_ALBEDO = "albedo";
+const char* SceneParser::TYPE = "type";
+const char* SceneParser::ALBEDO = "albedo";
 const char* SceneParser::MATERIAL_SHADING = "smooth_shading";
 const char* SceneParser::MATERIAL_IOR = "ior";
 const char* SceneParser::LIGHTS = "lights";
@@ -30,28 +30,35 @@ const char* SceneParser::LIGHT_INTENSITY = "intensity";
 const char* SceneParser::POSITION = "position";
 const char* SceneParser::SCENE_OBJECTS = "objects";
 const char* SceneParser::VERTICES = "vertices";
+const char* SceneParser::UVS = "uvs";
 const char* SceneParser::TRIANGLES = "triangles";
 
 SceneParser::SceneParser() = default;
 
-Scene SceneParser::parseScene(const std::string& pathToScene) {
-  std::ifstream ifs(pathToScene);
+Scene SceneParser::parseScene(const std::string& pathToScene, const std::string& sceneFolder) {
+  std::ifstream ifs((sceneFolder == "" ? "" : sceneFolder + "/") + pathToScene);
   assert(ifs.is_open());
 
   rapidjson::IStreamWrapper isWrapper(ifs);
   rapidjson::Document document;
   document.ParseStream(isWrapper);
+  Scene result;
 
   SceneSettings sceneSettings = parseSceneSettings(document);
-  Camera camera = parseCameraSettings(document);
-  std::vector<Material> materials = parseMaterials(document);
-  std::vector<Light> lights = parseLightSettings(document);
-  std::vector<Mesh> objects = parseSceneObjects(document, materials);
-  Scene result;
   result.sceneSettings = sceneSettings;
+  Camera camera = parseCameraSettings(document);
   result.camera = camera;
+#if (defined USE_TEXTURES) && USE_TEXTURES
+  std::vector<Texture*> textures = parseTextures(document, sceneFolder);
+  result.textures = std::move(textures);
+  std::vector<Material> materials = parseMaterials(document, result.textures);
+#else
+  std::vector<Material> materials = parseMaterials(document);
+#endif  // USE_TEXTURES
   result.materials = std::move(materials);
+  std::vector<Light> lights = parseLightSettings(document);
   result.lights = std::move(lights);
+  std::vector<Mesh> objects = parseSceneObjects(document, result.materials);
   result.objects = std::move(objects);
   return result;
   // return Scene{sceneSettings, camera, materials, lights, objects};
@@ -131,13 +138,76 @@ std::vector<Light> SceneParser::parseLightSettings(const rapidjson::Document& do
   return lights;
 }
 
-std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& document) {
+#if (defined USE_TEXTURES) && USE_TEXTURES
+std::vector<Texture*> SceneParser::parseTextures(const rapidjson::Document& document, const std::string& sceneFolder) {
+  std::vector<Texture*> textures;
+  const rapidjson::Value& texturesValue = document.FindMember(SceneParser::TEXTURES)->value;
+  if (!texturesValue.IsNull() && texturesValue.IsArray()) {
+    textures.reserve(texturesValue.GetArray().Size());
+    for (auto& texture : texturesValue.GetArray()) {
+      const rapidjson::Value& textureTypeValue = texture.FindMember(SceneParser::TYPE)->value;
+      assert(!textureTypeValue.IsNull() && textureTypeValue.IsString());
+      const char* textureTypeString = textureTypeValue.GetString();
+      const rapidjson::Value& textureNameValue = texture.FindMember("name")->value;
+      assert(!textureNameValue.IsNull() && textureNameValue.IsString());
+      const std::string textureName = textureNameValue.GetString();
+
+      if (strcmp(textureTypeString, "albedo") == 0) {
+        const rapidjson::Value& textureAlbedoValue = texture.FindMember(SceneParser::ALBEDO)->value;
+        assert(!textureAlbedoValue.IsNull() && textureAlbedoValue.IsArray());
+        Albedo albedo = Albedo(loadFloatSTLVector(textureAlbedoValue.GetArray(), 3));
+        textures.push_back(new AlbedoTexture(textureName, albedo));
+      } else if (strcmp(textureTypeString, "edges") == 0) {
+        const rapidjson::Value& innerColorValue = texture.FindMember("inner_color")->value;
+        assert(!innerColorValue.IsNull() && innerColorValue.IsArray());
+        Color innerColor = Color(loadFloatSTLVector(innerColorValue.GetArray(), 3));
+
+        const rapidjson::Value& edgeColorValue = texture.FindMember("edge_color")->value;
+        assert(!edgeColorValue.IsNull() && edgeColorValue.IsArray());
+        Color edgeColor = Color(loadFloatSTLVector(edgeColorValue.GetArray(), 3));
+
+        const rapidjson::Value& edgeWidthValue = texture.FindMember("edge_width")->value;
+        assert(!edgeWidthValue.IsNull() && edgeWidthValue.IsFloat());
+        float edgeWidth = edgeWidthValue.GetFloat();
+
+        textures.push_back(new EdgeTexture(textureName, innerColor, edgeColor, edgeWidth));
+      } else if (strcmp(textureTypeString, "checker") == 0) {
+        const rapidjson::Value& colorValueA = texture.FindMember("color_A")->value;
+        assert(!colorValueA.IsNull() && colorValueA.IsArray());
+        Color colorA = Color(loadFloatSTLVector(colorValueA.GetArray(), 3));
+
+        const rapidjson::Value& colorValueB = texture.FindMember("color_B")->value;
+        assert(!colorValueB.IsNull() && colorValueB.IsArray());
+        Color colorB = Color(loadFloatSTLVector(colorValueB.GetArray(), 3));
+
+        const rapidjson::Value& squareSizeValue = texture.FindMember("square_size")->value;
+        assert(!squareSizeValue.IsNull() && squareSizeValue.IsFloat());
+        float squareSize = squareSizeValue.GetFloat();
+
+        textures.push_back(new CheckerTexture(textureName, colorA, colorB, squareSize));
+      } else if (strcmp(textureTypeString, "bitmap") == 0) {
+        const rapidjson::Value& pathValue = texture.FindMember("file_path")->value;
+        assert(!pathValue.IsNull() && pathValue.IsString());
+        std::string path = pathValue.GetString();
+
+        textures.push_back(new BitmapTexture(textureName, sceneFolder + path));
+      } else {
+        throw "Invalid material";
+      }
+    }
+  }
+  return textures;
+}
+#endif  // USE_TEXTURES
+
+std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& document,
+                                                  const std::vector<Texture*>& textures) {
   std::vector<Material> materials;
   const rapidjson::Value& materialsValue = document.FindMember(SceneParser::MATERIALS)->value;
   if (!materialsValue.IsNull() && materialsValue.IsArray()) {
     materials.reserve(materialsValue.GetArray().Size());
     for (auto& material : materialsValue.GetArray()) {
-      const rapidjson::Value& materialTypeValue = material.FindMember(SceneParser::MATERIAL_TYPE)->value;
+      const rapidjson::Value& materialTypeValue = material.FindMember(SceneParser::TYPE)->value;
       assert(!materialTypeValue.IsNull() && materialTypeValue.IsString());
       const char* materialTypeString = materialTypeValue.GetString();
       MaterialType materialType;
@@ -158,15 +228,35 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
       } else {
         throw "Invalid material";
       }
-      if (materialType != Refractive) {
-        const rapidjson::Value& materialAlbedoValue = material.FindMember(SceneParser::MATERIAL_ALBEDO)->value;
+      const rapidjson::Value& materialShadingValue = material.FindMember(SceneParser::MATERIAL_SHADING)->value;
+      assert(!materialShadingValue.IsNull() && materialShadingValue.IsBool());
+#if (defined USE_TEXTURES) && USE_TEXTURES
+      const rapidjson::Value& textureNameValue = material.FindMember("albedo")->value;
+      assert(!textureNameValue.IsNull() && textureNameValue.IsString());
+      const std::string textureName = textureNameValue.GetString();
+      Texture* texture = nullptr;
+      for (Texture* t : textures) {
+        if (t->name == textureName) {
+          texture = t;
+          break;
+        }
+      }
+      if (materialType != Diffuse) {
+        const rapidjson::Value& materialAlbedoValue = material.FindMember(SceneParser::ALBEDO)->value;
         assert(!materialAlbedoValue.IsNull() && materialAlbedoValue.IsArray());
         albedo = Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3));
       }
-      const rapidjson::Value& materialShadingValue = material.FindMember(SceneParser::MATERIAL_SHADING)->value;
-      assert(!materialShadingValue.IsNull() && materialShadingValue.IsBool());
+      Material temp(*texture, albedo, materialType, materialShadingValue.GetBool(), IOR);
+      materials.push_back(temp);
+#else
+      if (materialType != Refractive) {
+        const rapidjson::Value& materialAlbedoValue = material.FindMember(SceneParser::ALBEDO)->value;
+        assert(!materialAlbedoValue.IsNull() && materialAlbedoValue.IsArray());
+        albedo = Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3));
+      }
       Material temp(albedo, materialType, materialShadingValue.GetBool(), IOR);
       materials.push_back(temp);
+#endif  // USE_TEXTURES
     }
   }
   return materials;
@@ -197,6 +287,18 @@ std::vector<Mesh> SceneParser::parseSceneObjects(const rapidjson::Document& docu
         vertices.push_back(Vertex(Vector(verticesValueArray[i].GetFloat(), verticesValueArray[i + 1].GetFloat(),
                                          verticesValueArray[i + 2].GetFloat())));
       }
+
+#if (defined USE_TEXTURES) && USE_TEXTURES
+      const rapidjson::Value& UVsValue = object.FindMember(SceneParser::UVS)->value;
+      assert(!UVsValue.IsNull() && UVsValue.IsArray());
+      auto uvValuesArray = UVsValue.GetArray();
+      assert(uvValuesArray.Size() % 3 == 0);
+      for (size_t i = 0; i < uvValuesArray.Size(); i += 3) {
+        Vector temp =
+            Vector(uvValuesArray[i].GetFloat(), uvValuesArray[i + 1].GetFloat(), uvValuesArray[i + 2].GetFloat());
+        vertices[i / 3].UV = temp;
+      }
+#endif  // USE_TEXTURES
 
       const rapidjson::Value& triangleTriplesValue = object.FindMember(SceneParser::TRIANGLES)->value;
       assert(!triangleTriplesValue.IsNull() && triangleTriplesValue.IsArray());

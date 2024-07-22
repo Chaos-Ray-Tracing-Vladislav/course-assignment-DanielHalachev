@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "Ray.h"
-#include "Scene.h"
-#include "tracer/Camera.h"
+#include "tracer/Ray.h"
+#include "tracer/Scene.h"
+#include "tracer/Triangle.h"
 #include "tracer/Vector.h"
 
 typedef Vector ColorVector;
@@ -26,9 +26,10 @@ class RayTracer {
   static thread_local std::uniform_real_distribution<float> distribution;
   struct IntersectionInformation {
     const Mesh *const object;
+    const Triangle *const triangle;
     Vector intersectionPoint;
     Vector hitNormal;
-#if defined(BARYCENTRIC) && BARYCENTRIC
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
     float u;
     float v;
 #endif  // BARYCENTRIC
@@ -42,13 +43,13 @@ class RayTracer {
   std::vector<std::vector<Ray>> pixelRays;
   std::vector<std::vector<Color>> colorBuffer;
   void updateRays();
-  Color shootRay(const Ray &ray, const unsigned int depth = 0, const float IOR = 1.0f) const;
+  Color shootRay(const Ray &ray, const unsigned int depth = 0) const;
   Color shade(const Ray &ray) const;
   std::optional<RayTracer::IntersectionInformation> trace(const Ray &ray) const;
   bool hasIntersection(const Ray &ray, const float distanceToLight) const;
 
  public:
-  explicit RayTracer(const std::string &pathToScene);
+  explicit RayTracer(const std::string &pathToScene, const std::string &basePath);
   const Camera &getCamera() const;
   Camera &setCamera();
   void render();

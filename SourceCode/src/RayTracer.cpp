@@ -11,13 +11,7 @@
 #include <random>
 #include <vector>
 
-#include "tracer/Camera.h"
-#include "tracer/Ray.h"
-#include "tracer/Scene.h"
 #include "tracer/SceneParser.h"
-#include "tracer/Triangle.h"
-#include "tracer/Utils.h"
-#include "tracer/Vector.h"
 
 const float PI = (22.0f / 7.0f);
 thread_local std::default_random_engine RayTracer::engine;
@@ -33,8 +27,9 @@ void printProgress(double percentage) {
   fflush(stdout);
 }
 
-RayTracer::RayTracer(const std::string &pathToScene) : rayUpdateRequired(true), renderRequired(true) {
-  this->scene = std::move(SceneParser::parseScene(pathToScene));
+RayTracer::RayTracer(const std::string &pathToScene, const std::string &basePath)
+    : rayUpdateRequired(true), renderRequired(true) {
+  this->scene = std::move(SceneParser::parseScene(pathToScene, basePath));
 };
 
 const Camera &RayTracer::getCamera() const {
@@ -102,7 +97,7 @@ void RayTracer::render() {
 #endif  // MEASURE_TIME
 }
 
-Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float IOR) const {
+Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   if (depth > MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
@@ -132,7 +127,15 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
 
           if (!shadowRayIntersection) {
             float directLightContribution = (static_cast<float>(light.intentsity) / sphereArea * angle);
+#if (defined USE_TEXTURES) && USE_TEXTURES
+            finalColor +=
+                directLightContribution *
+                mesh.material.texture->getColor(*intersectionInformation->triangle,
+                                                Vector(intersectionInformation->u, intersectionInformation->v,
+                                                       1.0f - intersectionInformation->u - intersectionInformation->v));
+#else
             finalColor += directLightContribution * mesh.material.albedo;
+#endif  // USE_TEXTURE
           }
 
 #if defined(GLOBAL_ILLUMINATION) && GLOBAL_ILLUMINATION
@@ -176,7 +179,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
       case Reflective: {
         Ray reflectionRay(intersectionPoint + hitNormal * REFLECTION_BIAS,
                           ray.direction.reflect(hitNormal).getNormalized(), ReflectionRay);
-        Color reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
+        Color reflectionColor = shootRay(reflectionRay, depth + 1);
         finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
                             mesh.material.albedo[1] * reflectionColor[1],  // green
                             mesh.material.albedo[2] * reflectionColor[2]   // blue
@@ -204,7 +207,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
 
         Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized(),
                           ReflectionRay);
-        reflectionColor = shootRay(reflectionRay, depth + 1, mesh.material.ior);
+        reflectionColor = shootRay(reflectionRay, depth + 1);
 
         if (sineAlpha < eta1 / eta2) {
           float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
@@ -218,7 +221,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
                                        + (ray.direction + cosineAlpha * normal).getNormalized()  // C // B
                                              * sineBeta;                                         //   // B
           Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection, RefractionRay);
-          refractionColor = shootRay(refractionRay, depth + 1, mesh.material.ior);
+          refractionColor = shootRay(refractionRay, depth + 1);
           return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
         }
 
@@ -237,6 +240,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth, const float 
 std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
   float minDistance = std::numeric_limits<float>::infinity();
   const Mesh *intersectedObject = nullptr;
+  const Triangle *intersectedTriangle = nullptr;
   Intersection intersection;
 
   for (auto &object : this->scene.objects) {
@@ -248,6 +252,7 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
         if (distance < minDistance) {
           minDistance = distance;
           intersectedObject = &object;
+          intersectedTriangle = &triangle;
           intersection = tempIntersection.value();
         }
       }
@@ -255,12 +260,13 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
   }
   if (intersectedObject != nullptr) {
     //
-#if defined(BARYCENTRIC) && BARYCENTRIC
-    IntersectionInformation temp{intersectedObject, intersection.hitPoint, intersection.hitNormal, intersection.u,
-                                 intersection.v};
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
+    IntersectionInformation temp{intersectedObject,      intersectedTriangle, intersection.hitPoint,
+                                 intersection.hitNormal, intersection.u,      intersection.v};
     return temp;
 #endif  // BARYCENTRIC
-    return IntersectionInformation{intersectedObject, intersection.hitPoint, intersection.hitNormal};
+    return IntersectionInformation{intersectedObject, intersectedTriangle, intersection.hitPoint,
+                                   intersection.hitNormal};
   }
   return {};
 }

@@ -1,12 +1,6 @@
-#include <tracer/Ray.h>
+#include "tracer/Ray.h"
 
-// #include <limits>
-#include <cmath>
 #include <optional>
-
-#include "tracer/Triangle.h"
-#include "tracer/Utils.h"
-#include "tracer/Vector.h"
 
 Ray::Ray() = default;
 Ray::Ray(const Vector &origin, const Vector &direction, const RayType &rayType)
@@ -51,8 +45,9 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
     hitNormal.normalize();
   }
 
-#if defined(BARYCENTRIC) && BARYCENTRIC
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
   return Intersection{intersectionPoint, hitNormal, u, v};
-#endif  // BARYCENTRIC
+#else
   return Intersection{intersectionPoint, hitNormal};
+#endif  // BARYCENTRIC || USE_TEXTURES
 }

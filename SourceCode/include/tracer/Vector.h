@@ -28,21 +28,3 @@ class Vector {
   static Vector generateRandom();
   static Vector getVectorSampleOnHemisphere(const float angle1, const float angle2);
 };
-
-class Vertex {
- private:
- public:
-  Vector position;
-  Vector normal;
-
- public:
-  explicit Vertex(const Vector &position, const Vector &normal = Vector()) : position(position), normal(normal){};
-
-  float &operator[](const unsigned short index) {
-    return this->position[index];
-  }
-
-  const float &operator[](const unsigned short index) const {
-    return this->position[index];
-  }
-};
