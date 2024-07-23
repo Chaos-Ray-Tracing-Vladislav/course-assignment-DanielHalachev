@@ -97,8 +97,14 @@ SceneSettings SceneParser::parseSceneSettings(const rapidjson::Document& documen
     if (!imageSettingsValue.IsNull() && settingsValue.IsObject()) {
       const rapidjson::Value& imageWidthValue = imageSettingsValue.FindMember("width")->value;
       const rapidjson::Value& imageHeightValue = imageSettingsValue.FindMember("height")->value;
+      const rapidjson::Value& bucketSizeValue = imageSettingsValue.FindMember("bucket_size")->value;
       assert(!imageWidthValue.IsNull() && imageWidthValue.IsInt());
       assert(!imageHeightValue.IsNull() && imageHeightValue.IsInt());
+      unsigned int bucketSize = 0;
+      if (!bucketSizeValue.IsNull() && bucketSizeValue.IsInt()) {
+        bucketSize = bucketSizeValue.GetInt();
+      }
+      sceneSettings.bucketSize = bucketSize;
       sceneSettings.image = {imageWidthValue.GetUint(), imageHeightValue.GetUint()};
     }
   }

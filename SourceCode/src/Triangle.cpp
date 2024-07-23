@@ -34,6 +34,10 @@ const Vector &Triangle::getTriangleNormal() const {
   return this->normal;
 }
 
+const std::array<Vertex *, TRIANGLE_NUM_VERTICES> &Triangle::getVertices() const {
+  return this->vertices;
+}
+
 bool Triangle::pointIsInTriangle(const Vector &point) const {
   Vector e0 = this->vertices[1]->position - this->vertices[0]->position;
   Vector c0 = point - this->vertices[0]->position;

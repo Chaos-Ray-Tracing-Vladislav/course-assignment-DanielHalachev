@@ -13,6 +13,7 @@ struct Image {
 struct SceneSettings {
   Color sceneBackgroundColor;
   Image image;
+  unsigned int bucketSize;
 };
 
 struct Light {
