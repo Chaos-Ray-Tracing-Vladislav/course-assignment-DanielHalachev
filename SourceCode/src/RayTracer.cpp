@@ -111,7 +111,7 @@ void RayTracer::renderRectangleAABB(unsigned int rowIndex, unsigned int columnIn
 
 void RayTracer::renderRegions(bool useBoundingBox) {
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(this->rectangleCount));
-  if (threadNumY < 0) {
+  if (threadNumY == 0) {
     threadNumY = 1;
   }
   unsigned int threadNumX = this->rectangleCount / threadNumY;
@@ -136,7 +136,7 @@ void RayTracer::renderRegions(bool useBoundingBox) {
 void RayTracer::renderBucketsThreadpool(bool useBoundingBox) {
   ThreadManager manager(this->rectangleCount);
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(rectangleCount));
-  if (threadNumY < 0) {
+  if (threadNumY == 0) {
     threadNumY = 1;
   }
   unsigned int threadNumX = this->rectangleCount / threadNumY;
@@ -166,7 +166,7 @@ void RayTracer::renderBucketsQueue(bool useBoundingBox) {
   std::queue<Region> queue;
   std::mutex mutex;
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(rectangleCount));
-  if (threadNumY < 0) {
+  if (threadNumY == 0) {
     threadNumY = 1;
   }
   unsigned int threadNumX = this->rectangleCount / threadNumY;
@@ -404,8 +404,7 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
 
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> tempIntersection =
-          ray.intersectWithTriangle(triangle, object.material.type, object.material.smoothShading);
+      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
       if (tempIntersection.has_value()) {
         float distance = (tempIntersection.value().hitPoint - ray.origin).length();
         if (distance < minDistance) {
@@ -438,8 +437,7 @@ bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) con
     }
 #endif
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> intersection =
-          ray.intersectWithTriangle(triangle, object.material.type, object.material.smoothShading);
+      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
       if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
         return true;
       }

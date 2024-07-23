@@ -6,8 +6,7 @@ Ray::Ray() = default;
 Ray::Ray(const Vector &origin, const Vector &direction, const RayType &rayType)
     : origin(origin), direction(direction), rayType(rayType){};
 
-std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const MaterialType materialType,
-                                                       const bool smoothShading) const {
+std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const bool smoothShading) const {
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
