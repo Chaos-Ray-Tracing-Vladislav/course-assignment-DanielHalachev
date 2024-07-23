@@ -35,21 +35,11 @@ void RayTracer::printProgress(double percentage) {
   fflush(stdout);
 }
 
-RayTracer::RayTracer(Scene &scene) {
+RayTracer::RayTracer(Scene &scene) : boundingBox(scene) {
   this->scene = std::move(scene);
   this->colorBuffer.resize(this->scene.sceneSettings.image.height);
   for (auto &row : colorBuffer) {
     row.resize(this->scene.sceneSettings.image.width);
-  }
-  for (auto &object : this->scene.objects) {
-    for (auto &triangle : object.triangles) {
-      for (auto *vertex : triangle.getVertices()) {
-        for (auto i = 0; i < 3; i++) {
-          this->boundingBox.minPoint[i] = std::min(this->boundingBox.minPoint[i], vertex->position[i]);
-          this->boundingBox.maxPoint[i] = std::max(this->boundingBox.maxPoint[i], vertex->position[i]);
-        }
-      }
-    }
   }
 };
 

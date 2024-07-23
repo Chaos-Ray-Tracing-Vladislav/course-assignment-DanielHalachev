@@ -6,6 +6,7 @@
 #include "tracer/Triangle.h"
 
 struct Intersection {
+  float distance;
   Vector hitPoint;
   Vector hitNormal;
 

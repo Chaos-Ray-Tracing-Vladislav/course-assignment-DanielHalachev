@@ -8,6 +8,7 @@
 #include "tracer/Scene.h"
 #include "tracer/Triangle.h"
 #include "tracer/Vector.h"
+#include "tree/KDTree.h"
 
 typedef Vector ColorVector;
 #if defined(GLOBAL_ILLUMINATION) && GLOBAL_ILLUMINATION
@@ -46,46 +47,7 @@ class RayTracer {
 #endif  // BARYCENTRIC
   };
 
-  struct BoundingBox {
-    Vector minPoint;
-    Vector maxPoint;
-    bool hasIntersection(const Ray &ray) {
-      Vector tMax;  // tXmin, tYmin, tZmin
-      Vector tMin;  // tXmax, tYmax, tZmax
-      for (auto i = 0; i < 3; i++) {
-        if (ray.direction[i] == 0) {
-          if (ray.origin[i] < minPoint[i] || ray.origin[i] > maxPoint[i]) {
-            return false;
-          }
-          tMax[i] = std::numeric_limits<float>::infinity();
-          tMin[i] = -std::numeric_limits<float>::infinity();
-        } else {
-          tMax[i] = (maxPoint[i] - ray.origin[i]) / ray.direction[i];
-          tMin[i] = (minPoint[i] - ray.origin[i]) / ray.direction[i];
-        }
-      }
-
-      for (auto i = 0; i < 3; i++) {
-        if (tMin[i] > 0) {
-          Vector intersectionPoint = ray.origin + tMin[i] * ray.direction;
-          if (intersectionPoint[0] >= this->minPoint[0] && intersectionPoint[0] <= this->maxPoint[0] &&
-              intersectionPoint[1] >= this->minPoint[1] && intersectionPoint[1] <= this->maxPoint[1] &&
-              intersectionPoint[2] >= this->minPoint[2] && intersectionPoint[2] <= this->maxPoint[2]) {
-            return true;
-          }
-        } else if (tMax[i] > 0) {
-          Vector intersectionPoint = ray.origin + tMax[i] * ray.direction;
-          if (intersectionPoint[0] >= this->minPoint[0] && intersectionPoint[0] <= this->maxPoint[0] &&
-              intersectionPoint[1] >= this->minPoint[1] && intersectionPoint[1] <= this->maxPoint[1] &&
-              intersectionPoint[2] >= this->minPoint[2] && intersectionPoint[2] <= this->maxPoint[2]) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-  } boundingBox;
-
+  BoundingBox boundingBox;
   Scene scene;
   std::vector<std::vector<Color>> colorBuffer;
   unsigned short rectangleCount = 1;

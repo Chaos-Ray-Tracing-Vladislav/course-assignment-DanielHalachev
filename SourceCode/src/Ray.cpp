@@ -47,7 +47,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
     hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
     hitNormal.normalize();
   }
-  return Intersection{intersectionPoint, hitNormal, u, v};
+  return Intersection{t, intersectionPoint, hitNormal, u, v};
 #else
   if (smoothShading) {
     Vector v0p = intersectionPoint - triangle[0].position;
@@ -60,6 +60,6 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
     hitNormal.normalize();
   }
 
-  return Intersection{intersectionPoint, hitNormal};
+  return Intersection{t, intersectionPoint, hitNormal};
 #endif  // BARYCENTRIC || USE_TEXTURES
 }
