@@ -58,8 +58,7 @@ Scene SceneParser::parseScene(const std::string& pathToScene, const std::string&
   result.materials = std::move(materials);
   std::vector<Light> lights = parseLightSettings(document);
   result.lights = std::move(lights);
-  std::vector<Mesh> objects = parseSceneObjects(document, result.materials);
-  result.objects = std::move(objects);
+  parseSceneObjects(document, result.materials, result.objects, result.triangles);
   return result;
   // return Scene{sceneSettings, camera, materials, lights, objects};
 }
@@ -268,8 +267,8 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
   return materials;
 }
 
-std::vector<Mesh> SceneParser::parseSceneObjects(const rapidjson::Document& document,
-                                                 const std::vector<Material>& materials) {
+void SceneParser::parseSceneObjects(const rapidjson::Document& document, const std::vector<Material>& materials,
+                                    std::vector<Mesh>& objects, std::vector<Triangle>& triangles) {
   std::vector<Mesh> meshes;
 
   const rapidjson::Value& objectsValue = document.FindMember(SceneParser::SCENE_OBJECTS)->value;
@@ -313,8 +312,32 @@ std::vector<Mesh> SceneParser::parseSceneObjects(const rapidjson::Document& docu
       for (size_t i = 0; i < triangleTempArray.Size(); i++) {
         triangleTriples.push_back(triangleTempArray[i].GetUint());
       }
-      meshes.push_back(Mesh{material, vertices, triangleTriples});
+      triangles.reserve(triangleTriples.size() / 3);
+      // calculate vertex normals
+      // and add triangles
+      size_t beginIterator = triangles.size();
+      for (auto i = 0; i < triangleTriples.size(); i += 3) {
+        unsigned int index0 = triangleTriples[i];
+        unsigned int index1 = triangleTriples[i + 1];
+        unsigned int index2 = triangleTriples[i + 2];
+
+        Vertex& v0 = vertices[index0];
+        Vertex& v1 = vertices[index1];
+        Vertex& v2 = vertices[index2];
+
+        Triangle tr(v0, v1, v2);
+        triangles.push_back(tr);
+        Vector faceNormal = tr.getTriangleNormal();
+
+        vertices[index0].normal += faceNormal;
+        vertices[index1].normal += faceNormal;
+        vertices[index2].normal += faceNormal;
+      }
+      for (auto& vertex : vertices) {
+        vertex.normal.normalize();
+      }
+      size_t endIterator = triangles.size();
+      objects.push_back(Mesh{material, vertices, beginIterator, endIterator});
     }
   }
-  return meshes;
 }

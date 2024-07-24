@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <cstddef>
 #include <limits>
+#include <numeric>
 #include <optional>
 #include <stack>
 #include <vector>
@@ -17,13 +19,11 @@ class BoundingBox {
  public:
   BoundingBox(const Vector &minPoint, const Vector &maxPoint) : minPoint{minPoint}, maxPoint{maxPoint} {}
   explicit BoundingBox(const Scene &scene) {
-    for (auto &object : scene.objects) {
-      for (auto &triangle : object.triangles) {
-        for (auto *vertex : triangle.getVertices()) {
-          for (auto i = 0; i < 3; i++) {
-            this->minPoint[i] = std::min(this->minPoint[i], vertex->position[i]);
-            this->maxPoint[i] = std::max(this->maxPoint[i], vertex->position[i]);
-          }
+    for (auto &triangle : scene.triangles) {
+      for (auto *vertex : triangle.getVertices()) {
+        for (auto i = 0; i < 3; i++) {
+          this->minPoint[i] = std::min(this->minPoint[i], vertex->position[i]);
+          this->maxPoint[i] = std::max(this->maxPoint[i], vertex->position[i]);
         }
       }
     }
@@ -101,40 +101,10 @@ class KDTree {
     BoundingBox box;
     int children[2];
     int parent;
-    std::vector<Triangle> triangles;
-
-    std::optional<Intersection> intersect(const Ray &ray) {
-      float minDistance = std::numeric_limits<float>::infinity();
-      const Mesh *intersectedObject = nullptr;
-      const Triangle *intersectedTriangle = nullptr;
-      Intersection intersection;
-      for (auto &triangle : this->triangles) {
-        std::optional<Intersection> tempIntersection =
-            ray.intersectWithTriangle(triangle, object.material.smoothShading);
-        if (tempIntersection.has_value()) {
-          float distance = (tempIntersection.value().hitPoint - ray.origin).length();
-          if (distance < minDistance) {
-            minDistance = distance;
-            intersectedObject = &object;
-            intersectedTriangle = &triangle;
-            intersection = tempIntersection.value();
-          }
-        }
-      }
-      if (intersectedObject != nullptr) {
-        //
-#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-        IntersectionInformation temp{intersectedObject,      intersectedTriangle, intersection.hitPoint,
-                                     intersection.hitNormal, intersection.u,      intersection.v};
-        return temp;
-#endif  // BARYCENTRIC
-        return IntersectionInformation{intersectedObject, intersectedTriangle, intersection.hitPoint,
-                                       intersection.hitNormal};
-      }
-      return {};
-    }
+    std::vector<size_t> triangleIndexes;
   };
 
+  const Scene &scene;
   const unsigned short MAX_TRIANGLES_IN_LEAF = 16;
   const unsigned short MAX_DEPTH = 25;
   const unsigned short AXIS_COUNT = 3;
@@ -146,24 +116,24 @@ class KDTree {
     return newNodeIndex;
   }
 
-  void build(const int parentIndex, const unsigned short depth, const std::vector<Triangle> &triangles) {
-    if (depth >= MAX_DEPTH || triangles.size() <= MAX_TRIANGLES_IN_LEAF) {
-      this->nodes[parentIndex].triangles = triangles;
+  void build(const int parentIndex, const unsigned short depth, const std::vector<size_t> &triangleIndexes) {
+    if (depth >= MAX_DEPTH || triangleIndexes.size() <= MAX_TRIANGLES_IN_LEAF) {
+      this->nodes[parentIndex].triangleIndexes = triangleIndexes;
       return;
     }
 
     std::pair<BoundingBox, BoundingBox> childBoxes = this->nodes[parentIndex].box.split(depth % AXIS_COUNT);
-    std::vector<Triangle> firstChildTriangles;
-    std::vector<Triangle> secondChildTriangles;
-    firstChildTriangles.reserve(triangles.size() / 2);
-    firstChildTriangles.reserve(triangles.size() / 2);
+    std::vector<size_t> firstChildTriangles;
+    std::vector<size_t> secondChildTriangles;
+    firstChildTriangles.reserve(triangleIndexes.size() / 2);
+    firstChildTriangles.reserve(triangleIndexes.size() / 2);
 
-    for (auto &triangle : triangles) {
-      if (childBoxes.first.contains(triangle)) {
-        firstChildTriangles.push_back(triangle);
+    for (auto &triangleIndex : triangleIndexes) {
+      if (childBoxes.first.contains(this->scene.triangles[triangleIndex])) {
+        firstChildTriangles.push_back(triangleIndex);
       }
-      if (childBoxes.second.contains(triangle)) {
-        secondChildTriangles.push_back(triangle);
+      if (childBoxes.second.contains(this->scene.triangles[triangleIndex])) {
+        secondChildTriangles.push_back(triangleIndex);
       }
     }
     firstChildTriangles.shrink_to_fit();
@@ -180,8 +150,8 @@ class KDTree {
     }
   }
 
-  std::optional<Intersection> intersect(const Ray &ray) {
-    std::vector<Intersection> intersections;
+  std::optional<IntersectionInformation> intersect(const Ray &ray) {
+    std::vector<IntersectionInformation> intersections;
     std::stack<unsigned int> indexesToCheck;
     indexesToCheck.push(0);
     while (!indexesToCheck.empty()) {
@@ -189,8 +159,8 @@ class KDTree {
       TreeNode &currentNode = this->nodes[currentIndex];
       indexesToCheck.pop();
       if (currentNode.box.hasIntersection(ray)) {
-        if (!currentNode.triangles.empty()) {
-          std::optional<Intersection> currentIntersection = currentNode.intersect(ray);
+        if (!currentNode.triangleIndexes.empty()) {
+          std::optional<IntersectionInformation> currentIntersection = scene.trace(ray, currentNode.triangleIndexes);
           if (currentIntersection.has_value()) {
             intersections.push_back(currentIntersection.value());
           }
@@ -204,7 +174,7 @@ class KDTree {
         }
       }
     }
-    Intersection closestIntersection;
+    IntersectionInformation closestIntersection;
     float minDistance = std::numeric_limits<float>::infinity();
     for (auto &intersection : intersections) {
       if (intersection.distance < minDistance) {
@@ -219,8 +189,10 @@ class KDTree {
   }
 
  public:
-  explicit KDTree(const Scene &scene) {
+  explicit KDTree(const Scene &scene) : scene(scene) {
     unsigned int rootIndex = this->createNode(BoundingBox(scene), -1, -1, -1);
-    build(rootIndex, 0, );
+    std::vector<size_t> indexes(this->scene.triangles.size());
+    std::iota(indexes.begin(), indexes.end(), 0);
+    build(rootIndex, 0, indexes);
   }
 };

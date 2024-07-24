@@ -6,7 +6,6 @@
 
 #include "tracer/Ray.h"
 #include "tracer/Scene.h"
-#include "tracer/Triangle.h"
 #include "tracer/Vector.h"
 #include "tree/KDTree.h"
 
@@ -36,19 +35,9 @@ class RayTracer {
  private:
   static thread_local std::default_random_engine engine;
   static thread_local std::uniform_real_distribution<float> distribution;
-  struct IntersectionInformation {
-    const Mesh *const object;
-    const Triangle *const triangle;
-    Vector intersectionPoint;
-    Vector hitNormal;
-#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-    float u;
-    float v;
-#endif  // BARYCENTRIC
-  };
 
   BoundingBox boundingBox;
-  Scene scene;
+  Scene& scene;
   std::vector<std::vector<Color>> colorBuffer;
   unsigned short rectangleCount = 1;
   std::atomic_ushort rectanglesDone = 0;
@@ -57,7 +46,7 @@ class RayTracer {
   Ray getRay(unsigned int pixelRow, unsigned int pixelCol) const;
   Color shootRay(const Ray &ray, const unsigned int depth = 0) const;
   Color shade(const Ray &ray) const;
-  std::optional<RayTracer::IntersectionInformation> trace(const Ray &ray) const;
+  std::optional<IntersectionInformation> trace(const Ray &ray) const;
   bool hasIntersection(const Ray &ray, const float distanceToLight) const;
   void renderRectangle(unsigned int rowIndex, unsigned int colIndex, unsigned int width, unsigned int height);
   void renderRectangleAABB(unsigned int rowIndex, unsigned int colIndex, unsigned int width, unsigned int height);

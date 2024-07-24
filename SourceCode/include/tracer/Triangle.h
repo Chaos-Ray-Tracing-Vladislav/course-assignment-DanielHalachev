@@ -2,6 +2,7 @@
 #include <array>
 
 #include "Vertex.h"
+#include "tracer/Vector.h"
 
 #define TRIANGLE_NUM_VERTICES 3
 
@@ -21,4 +22,5 @@ class Triangle {
   Vector calculateNormal() const;
   bool pointIsInTriangle(const Vector &point) const;
   float area() const;
+  std::pair<float, float> getBarycentricCoordinates(const Vector &hitPoint) const;
 };

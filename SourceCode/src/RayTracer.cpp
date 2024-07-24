@@ -4,16 +4,21 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <limits>
 #include <mutex>
+#include <numeric>
+#include <optional>
 #include <queue>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "threadpool/ThreadManager.h"
+#include "tracer/Material.h"
+#include "tracer/Ray.h"
 #include "tracer/Scene.h"
 
 const float PI = (22.0f / 7.0f);
@@ -35,8 +40,7 @@ void RayTracer::printProgress(double percentage) {
   fflush(stdout);
 }
 
-RayTracer::RayTracer(Scene &scene) : boundingBox(scene) {
-  this->scene = std::move(scene);
+RayTracer::RayTracer(Scene &scene) : boundingBox(scene), scene(scene) {
   this->colorBuffer.resize(this->scene.sceneSettings.image.height);
   for (auto &row : colorBuffer) {
     row.resize(this->scene.sceneSettings.image.width);
@@ -255,9 +259,9 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 #if defined(BARYCENTRIC) && BARYCENTRIC
     return Color(intersectionInformation->u, intersectionInformation->v, 0);
 #endif  // BARYCENTRIC
-    const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
+    const Vector &intersectionPoint = intersectionInformation->hitPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
-    const Mesh &mesh = *intersectionInformation->object;
+    const Mesh &mesh = this->scene.getObject(intersectionInformation->triangleIndex);
 
     Vector finalColor(0, 0, 0);
 
@@ -386,53 +390,52 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   return this->scene.sceneSettings.sceneBackgroundColor;
 }
 
-std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
-  float minDistance = std::numeric_limits<float>::infinity();
-  const Mesh *intersectedObject = nullptr;
-  const Triangle *intersectedTriangle = nullptr;
-  Intersection intersection;
-
-  for (auto &object : this->scene.objects) {
-    for (auto &triangle : object.triangles) {
-      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
-      if (tempIntersection.has_value()) {
-        float distance = (tempIntersection.value().hitPoint - ray.origin).length();
-        if (distance < minDistance) {
-          minDistance = distance;
-          intersectedObject = &object;
-          intersectedTriangle = &triangle;
-          intersection = tempIntersection.value();
-        }
-      }
-    }
-  }
-  if (intersectedObject != nullptr) {
-    //
+std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
+  std::vector<size_t> triangleIndexes(this->scene.triangles.size());
+  std::iota(triangleIndexes.begin(), triangleIndexes.end(), 0);
+  std::optional<IntersectionInformation> intersection = this->scene.trace(ray, triangleIndexes);
+  if (intersection.has_value()) {
+    const Triangle &triangle = this->scene.triangles[intersection->triangleIndex];
+    const Mesh &object = this->scene.getObject(intersection->triangleIndex);
+    bool calculateUV = object.material.smoothShading;
+    float u = 0;
+    float v = 0;
 #if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-    IntersectionInformation temp{intersectedObject,      intersectedTriangle, intersection.hitPoint,
-                                 intersection.hitNormal, intersection.u,      intersection.v};
-    return temp;
-#endif  // BARYCENTRIC
-    return IntersectionInformation{intersectedObject, intersectedTriangle, intersection.hitPoint,
-                                   intersection.hitNormal};
+    calculateUV = true;
+#endif  // BARYCENTRIC || USE_TEXTURES
+    if (calculateUV) {
+      std::tie(u, v) = triangle.getBarycentricCoordinates(intersection->hitPoint);
+    }
+    if (object.material.smoothShading) {
+      intersection->hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
+      intersection->hitNormal.normalize();
+    }
+    return IntersectionInformation{intersection->triangleIndex, intersection->distance, intersection->hitPoint,
+                                   intersection->hitNormal};
   }
   return {};
 }
 
 bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
-  for (auto &object : this->scene.objects) {
-#if (!defined GLOBAL_ILLUMINATION) || ((defined GLOBAL_ILLUMINATION) && !GLOBAL_ILLUMINATION)
-    if (ray.rayType == ShadowRay && object.material.type == Refractive) {
+  for (auto triangleIndex = 0; triangleIndex < this->scene.triangles.size(); triangleIndex++) {
+    std::optional<Intersection> intersection = ray.intersectWithTriangle(this->scene.triangles[triangleIndex]);
+    if (!intersection.has_value()) {
       continue;
     }
-#endif
-    for (auto &triangle : object.triangles) {
-      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
-      if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
-        return true;
+#if (!defined GLOBAL_ILLUMINATION) || ((defined GLOBAL_ILLUMINATION) && !GLOBAL_ILLUMINATION)
+    if (ray.rayType == ShadowRay) {
+      const Mesh &object = this->scene.getObject(triangleIndex);
+      if (object.material.type == Refractive) {
+        continue;
       }
     }
+#endif
+
+    if ((intersection->hitPoint - ray.origin).length() <= distanceToLight) {
+      return true;
+    }
   }
+
   return false;
 }
 
