@@ -2,6 +2,7 @@
 #include <atomic>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "tracer/Ray.h"
@@ -37,8 +38,9 @@ class RayTracer {
   static thread_local std::uniform_real_distribution<float> distribution;
 
   BoundingBox boundingBox;
-  Scene& scene;
+  Scene &scene;
   std::vector<std::vector<Color>> colorBuffer;
+  unsigned short threadCount = std::thread::hardware_concurrency();
   unsigned short rectangleCount = 1;
   std::atomic_ushort rectanglesDone = 0;
 

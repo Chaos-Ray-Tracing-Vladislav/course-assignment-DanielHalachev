@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -44,6 +45,7 @@ class Mesh {
 
 struct IntersectionInformation {
   size_t triangleIndex;
+  Mesh *object;
   float distance;
   Vector hitPoint;
   Vector hitNormal;
@@ -63,7 +65,7 @@ struct Scene {
   std::vector<Light> lights;
   std::vector<Mesh> objects;
   std::vector<Triangle> triangles;
-  size_t lastObjectIndex;
+  std::atomic<size_t> lastObjectIndex;
 
  private:
   size_t binarySearch(const size_t leftIncluded, const size_t rightExcluded, const size_t triangleIndex) const;
@@ -79,6 +81,6 @@ struct Scene {
 
   ~Scene();
 
-  const Mesh &getObject(const size_t triangleIndex);
+  size_t getObject(const size_t triangleIndex);
   std::optional<IntersectionInformation> trace(const Ray &ray, const std::vector<size_t> &triangleIndexes) const;
 };

@@ -112,8 +112,8 @@ void RayTracer::renderRegions(bool useBoundingBox) {
   unsigned int regionWidth = this->scene.sceneSettings.image.width / threadNumX;
   unsigned int regionHeight = this->scene.sceneSettings.image.height / threadNumY;
   std::vector<std::thread> threads;
-  threads.reserve(rectangleCount);
-  for (auto i = 0; i < rectangleCount; i++) {
+  threads.reserve(this->threadCount);
+  for (auto i = 0; i < this->threadCount; i++) {
     unsigned column = (i * regionWidth) % this->scene.sceneSettings.image.width;
     unsigned row = (i / threadNumX) * regionHeight;
     if (useBoundingBox) {
@@ -128,7 +128,7 @@ void RayTracer::renderRegions(bool useBoundingBox) {
 }
 
 void RayTracer::renderBucketsThreadpool(bool useBoundingBox) {
-  ThreadManager manager(this->rectangleCount);
+  ThreadManager manager(this->threadCount);
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(rectangleCount));
   if (threadNumY == 0) {
     threadNumY = 1;
@@ -172,8 +172,8 @@ void RayTracer::renderBucketsQueue(bool useBoundingBox) {
     unsigned row = (i / threadNumX) * regionHeight;
     queue.push(Region{row, column});
   }
-  threads.reserve(rectangleCount);
-  for (auto i = 0; i < rectangleCount; i++) {
+  threads.reserve(this->threadCount);
+  for (auto i = 0; i < this->threadCount; i++) {
     threads.push_back(std::thread([this, useBoundingBox, regionWidth, regionHeight, &queue, &mutex]() {
       while (true) {
         std::unique_lock<std::mutex> lock(mutex);
@@ -202,6 +202,7 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
   printProgress(0);
   switch (optimization) {
     case NoOptimization: {
+      this->threadCount = 1;
       this->rectangleCount = 1;
       renderRegions(false);
       break;
@@ -222,6 +223,7 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
       break;
     }
     case AABB: {
+      this->threadCount = 1;
       this->rectangleCount = 1;
       this->renderRegions(true);
       break;
@@ -261,7 +263,7 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 #endif  // BARYCENTRIC
     const Vector &intersectionPoint = intersectionInformation->hitPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
-    const Mesh &mesh = this->scene.getObject(intersectionInformation->triangleIndex);
+    const Mesh &mesh = *intersectionInformation->object;
 
     Vector finalColor(0, 0, 0);
 
@@ -393,25 +395,30 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
   std::vector<size_t> triangleIndexes(this->scene.triangles.size());
   std::iota(triangleIndexes.begin(), triangleIndexes.end(), 0);
-  std::optional<IntersectionInformation> intersection = this->scene.trace(ray, triangleIndexes);
-  if (intersection.has_value()) {
-    const Triangle &triangle = this->scene.triangles[intersection->triangleIndex];
-    const Mesh &object = this->scene.getObject(intersection->triangleIndex);
-    bool calculateUV = object.material.smoothShading;
+  std::optional<IntersectionInformation> intersectionOptional = this->scene.trace(ray, triangleIndexes);
+  if (intersectionOptional.has_value()) {
+    IntersectionInformation intersection = intersectionOptional.value();
+    const Triangle triangle = this->scene.triangles[intersection.triangleIndex];
+    size_t objectIndex = this->scene.getObject(intersection.triangleIndex);
+    intersection.object = &this->scene.objects[objectIndex];
+    bool calculateUV = intersection.object->material.smoothShading;
     float u = 0;
     float v = 0;
 #if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
     calculateUV = true;
 #endif  // BARYCENTRIC || USE_TEXTURES
     if (calculateUV) {
-      std::tie(u, v) = triangle.getBarycentricCoordinates(intersection->hitPoint);
+      std::tie(u, v) = triangle.getBarycentricCoordinates(intersection.hitPoint);
     }
-    if (object.material.smoothShading) {
-      intersection->hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
-      intersection->hitNormal.normalize();
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
+    intersection->u = u;
+    intersection->v = v;
+#endif  // BARYCENTRIC || USE_TEXTURES
+    if (intersection.object->material.smoothShading) {
+      intersection.hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
+      intersection.hitNormal.normalize();
     }
-    return IntersectionInformation{intersection->triangleIndex, intersection->distance, intersection->hitPoint,
-                                   intersection->hitNormal};
+    return intersection;
   }
   return {};
 }
@@ -422,9 +429,10 @@ bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) con
     if (!intersection.has_value()) {
       continue;
     }
+
 #if (!defined GLOBAL_ILLUMINATION) || ((defined GLOBAL_ILLUMINATION) && !GLOBAL_ILLUMINATION)
     if (ray.rayType == ShadowRay) {
-      const Mesh &object = this->scene.getObject(triangleIndex);
+      const Mesh &object = this->scene.objects[this->scene.getObject(triangleIndex)];
       if (object.material.type == Refractive) {
         continue;
       }

@@ -269,11 +269,9 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
 
 void SceneParser::parseSceneObjects(const rapidjson::Document& document, const std::vector<Material>& materials,
                                     std::vector<Mesh>& objects, std::vector<Triangle>& triangles) {
-  std::vector<Mesh> meshes;
-
   const rapidjson::Value& objectsValue = document.FindMember(SceneParser::SCENE_OBJECTS)->value;
   if (!objectsValue.IsNull() && objectsValue.IsArray()) {
-    meshes.reserve(objectsValue.GetArray().Size());
+    objects.reserve(objectsValue.GetArray().Size());
     for (auto& object : objectsValue.GetArray()) {
       std::vector<Vertex> vertices;
       std::vector<unsigned int> triangleTriples;
@@ -312,7 +310,7 @@ void SceneParser::parseSceneObjects(const rapidjson::Document& document, const s
       for (size_t i = 0; i < triangleTempArray.Size(); i++) {
         triangleTriples.push_back(triangleTempArray[i].GetUint());
       }
-      triangles.reserve(triangleTriples.size() / 3);
+      triangles.reserve(triangles.size() + triangleTriples.size() / 3);
       // calculate vertex normals
       // and add triangles
       size_t beginIterator = triangles.size();
