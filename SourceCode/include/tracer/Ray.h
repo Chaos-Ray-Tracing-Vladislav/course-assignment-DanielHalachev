@@ -9,12 +9,6 @@ struct Intersection {
   float distance;
   Vector hitPoint;
   Vector hitNormal;
-
-// Ugly, I know :-D
-#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-  float u;
-  float v;
-#endif  // BARYCENTRIC
 };
 
 enum RayType { PrimaryRay, ShadowRay, ReflectionRay, RefractionRay, DiffuseRay };
@@ -29,5 +23,5 @@ class Ray {
   Ray(const Vector &origin, const Vector &direction, const RayType &rayType = PrimaryRay);
 
   // TODO (maybe move to Triangle.h)
-  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle, const bool smoothShading = false) const;
+  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle) const;
 };

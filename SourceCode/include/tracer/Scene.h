@@ -3,6 +3,7 @@
 
 #include "tracer/Camera.h"
 #include "tracer/Material.h"
+#include "tracer/Ray.h"
 #include "tracer/Triangle.h"
 
 struct Image {
@@ -13,7 +14,7 @@ struct Image {
 struct SceneSettings {
   Color sceneBackgroundColor;
   Image image;
-  unsigned int bucketSize;
+  unsigned int bucketSize = 1;
 };
 
 struct Light {
@@ -35,6 +36,16 @@ class Mesh {
 
   Mesh &operator=(const Mesh &other) = delete;
   Mesh &operator=(Mesh &&other) = delete;
+};
+
+struct IntersectionInformation {
+  const Mesh *object;
+  const Triangle *triangle;
+  Intersection intersection;
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
+  float u;
+  float v;
+#endif  // BARYCENTRIC
 };
 
 struct Scene {

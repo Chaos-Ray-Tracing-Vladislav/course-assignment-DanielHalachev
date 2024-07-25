@@ -100,7 +100,7 @@ SceneSettings SceneParser::parseSceneSettings(const rapidjson::Document& documen
       const rapidjson::Value& bucketSizeValue = imageSettingsValue.FindMember("bucket_size")->value;
       assert(!imageWidthValue.IsNull() && imageWidthValue.IsInt());
       assert(!imageHeightValue.IsNull() && imageHeightValue.IsInt());
-      unsigned int bucketSize = 0;
+      unsigned int bucketSize = 1;
       if (!bucketSizeValue.IsNull() && bucketSizeValue.IsInt()) {
         bucketSize = bucketSizeValue.GetInt();
       }

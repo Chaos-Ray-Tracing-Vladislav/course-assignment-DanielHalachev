@@ -21,4 +21,5 @@ class Triangle {
   Vector calculateNormal() const;
   bool pointIsInTriangle(const Vector &point) const;
   float area() const;
+  std::pair<float, float> getBarycentricCoordinates(const Vector &intersectionPoint) const;
 };

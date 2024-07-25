@@ -35,7 +35,7 @@ void RayTracer::printProgress(double percentage) {
   fflush(stdout);
 }
 
-RayTracer::RayTracer(Scene &scene) : boundingBox(scene) {
+RayTracer::RayTracer(Scene &scene) : boundingBox(scene), accelerationStructure(scene) {
   this->scene = std::move(scene);
   this->colorBuffer.resize(this->scene.sceneSettings.image.height);
   for (auto &row : colorBuffer) {
@@ -83,23 +83,7 @@ void RayTracer::renderRectangle(unsigned int rowIndex, unsigned int columnIndex,
   printProgress(static_cast<float>(this->rectanglesDone) / static_cast<float>(this->rectangleCount));
 }
 
-void RayTracer::renderRectangleAABB(unsigned int rowIndex, unsigned int columnIndex, unsigned int width,
-                                    unsigned int height) {
-  unsigned int rowLimit = std::min(this->scene.sceneSettings.image.height, rowIndex + height);
-  unsigned int columnLimit = std::min(this->scene.sceneSettings.image.width, columnIndex + width);
-  for (unsigned int pixelRow = rowIndex; pixelRow < rowLimit; pixelRow++) {
-    for (unsigned int pixelCol = columnIndex; pixelCol < columnLimit; pixelCol++) {
-      Ray ray = this->getRay(pixelRow, pixelCol);
-      this->colorBuffer[pixelRow][pixelCol] = (this->boundingBox.hasIntersection(ray))
-                                                  ? (this->shootRay(ray))
-                                                  : (this->scene.sceneSettings.sceneBackgroundColor);
-    }
-  }
-  this->rectanglesDone++;
-  printProgress(static_cast<float>(this->rectanglesDone) / static_cast<float>(this->rectangleCount));
-}
-
-void RayTracer::renderRegions(bool useBoundingBox) {
+void RayTracer::renderRegions() {
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(this->rectangleCount));
   if (threadNumY == 0) {
     threadNumY = 1;
@@ -108,23 +92,20 @@ void RayTracer::renderRegions(bool useBoundingBox) {
   unsigned int regionWidth = this->scene.sceneSettings.image.width / threadNumX;
   unsigned int regionHeight = this->scene.sceneSettings.image.height / threadNumY;
   std::vector<std::thread> threads;
-  threads.reserve(rectangleCount);
-  for (auto i = 0; i < rectangleCount; i++) {
+  threads.reserve(this->threadCount);
+  for (auto i = 0; i < this->threadCount; i++) {
     unsigned column = (i * regionWidth) % this->scene.sceneSettings.image.width;
     unsigned row = (i / threadNumX) * regionHeight;
-    if (useBoundingBox) {
-      threads.push_back(std::thread(&RayTracer::renderRectangleAABB, this, row, column, regionWidth, regionHeight));
-    } else {
-      threads.push_back(std::thread(&RayTracer::renderRectangle, this, row, column, regionWidth, regionHeight));
-    }
+
+    threads.push_back(std::thread(&RayTracer::renderRectangle, this, row, column, regionWidth, regionHeight));
   }
   for (auto &thread : threads) {
     thread.join();
   }
 }
 
-void RayTracer::renderBucketsThreadpool(bool useBoundingBox) {
-  ThreadManager manager(this->rectangleCount);
+void RayTracer::renderBucketsThreadpool() {
+  ThreadManager manager(this->threadCount);
   unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(rectangleCount));
   if (threadNumY == 0) {
     threadNumY = 1;
@@ -135,20 +116,14 @@ void RayTracer::renderBucketsThreadpool(bool useBoundingBox) {
   for (auto i = 0; i < rectangleCount; i++) {
     unsigned column = (i * regionWidth) % this->scene.sceneSettings.image.width;
     unsigned row = (i / threadNumX) * regionHeight;
-    if (useBoundingBox) {
-      manager.doJob([this, row, column, regionWidth, regionHeight]() {
-        RayTracer::renderRectangleAABB(row, column, regionWidth, regionHeight);
-      });
-    } else {
-      manager.doJob([this, row, column, regionWidth, regionHeight]() {
-        RayTracer::renderRectangle(row, column, regionWidth, regionHeight);
-      });
-    }
+    manager.doJob([this, row, column, regionWidth, regionHeight]() {
+      RayTracer::renderRectangle(row, column, regionWidth, regionHeight);
+    });
   }
   manager.waitForAll();
 }
 
-void RayTracer::renderBucketsQueue(bool useBoundingBox) {
+void RayTracer::renderBucketsQueue() {
   struct Region {
     unsigned int rowIndex;
     unsigned int colIndex;
@@ -162,15 +137,15 @@ void RayTracer::renderBucketsQueue(bool useBoundingBox) {
   unsigned int threadNumX = this->rectangleCount / threadNumY;
   unsigned int regionWidth = this->scene.sceneSettings.image.width / threadNumX;
   unsigned int regionHeight = this->scene.sceneSettings.image.height / threadNumY;
-  std::vector<std::thread> threads;
   for (auto i = 0; i < rectangleCount; i++) {
     unsigned column = (i * regionWidth) % this->scene.sceneSettings.image.width;
     unsigned row = (i / threadNumX) * regionHeight;
     queue.push(Region{row, column});
   }
-  threads.reserve(rectangleCount);
-  for (auto i = 0; i < rectangleCount; i++) {
-    threads.push_back(std::thread([this, useBoundingBox, regionWidth, regionHeight, &queue, &mutex]() {
+  std::vector<std::thread> threads;
+  threads.reserve(this->threadCount);
+  for (auto i = 0; i < this->threadCount; i++) {
+    threads.push_back(std::thread([this, regionWidth, regionHeight, &queue, &mutex]() {
       while (true) {
         std::unique_lock<std::mutex> lock(mutex);
         if (queue.empty()) {
@@ -180,11 +155,8 @@ void RayTracer::renderBucketsQueue(bool useBoundingBox) {
         Region region = queue.front();
         queue.pop();
         lock.unlock();
-        if (useBoundingBox) {
-          RayTracer::renderRectangleAABB(region.rowIndex, region.colIndex, regionWidth, regionHeight);
-        } else {
-          RayTracer::renderRectangle(region.rowIndex, region.colIndex, regionWidth, regionHeight);
-        }
+
+        RayTracer::renderRectangle(region.rowIndex, region.colIndex, regionWidth, regionHeight);
       }
     }));
   }
@@ -198,38 +170,61 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
   printProgress(0);
   switch (optimization) {
     case NoOptimization: {
+      this->useBounding = false;
+      this->threadCount = 1;
       this->rectangleCount = 1;
-      renderRegions(false);
+      renderRegions();
       break;
     }
     case Regions: {
+      this->useBounding = false;
       this->rectangleCount = std::thread::hardware_concurrency();
-      renderRegions(false);
+      renderRegions();
       break;
     }
     case BucketsThreadPool: {
+      this->useBounding = false;
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
-      renderBucketsThreadpool(false);
+      renderBucketsThreadpool();
       break;
     }
     case BucketsQueue: {
+      this->useBounding = false;
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
-      renderBucketsQueue(false);
+      renderBucketsQueue();
       break;
     }
     case AABB: {
+      this->useBounding = true;
+      this->threadCount = 1;
       this->rectangleCount = 1;
-      this->renderRegions(true);
+      this->renderRegions();
       break;
     }
     case BucketsThreadPoolAABB: {
+      this->useBounding = true;
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
-      this->renderBucketsThreadpool(true);
+      this->renderBucketsThreadpool();
       break;
     }
     case BucketsQueueAABB: {
+      this->useBounding = true;
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
-      this->renderBucketsQueue(true);
+      this->renderBucketsQueue();
+      break;
+    }
+    case BHV: {
+      this->useBounding = true;
+      this->boundingType = Tree;
+      this->threadCount = 1;
+      this->renderRegions();
+      break;
+    }
+    case BHVBucketsThreadPool: {
+      this->useBounding = true;
+      this->boundingType = Tree;
+      this->rectangleCount = this->scene.sceneSettings.bucketSize;
+      this->renderBucketsThreadpool();
       break;
     }
   }
@@ -246,7 +241,13 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
   return colorBuffer;
 }
 
-Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
+Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) {
+  if (this->useBounding && this->boundingType == SingleBoundingBox) {
+    if (!this->boundingBox.hasIntersection(ray)) {
+      return this->scene.sceneSettings.sceneBackgroundColor;
+    }
+  }
+
   if (depth > MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
@@ -255,8 +256,8 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
 #if defined(BARYCENTRIC) && BARYCENTRIC
     return Color(intersectionInformation->u, intersectionInformation->v, 0);
 #endif  // BARYCENTRIC
-    const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
-    const Vector &hitNormal = intersectionInformation->hitNormal;
+    const Vector &intersectionPoint = intersectionInformation->intersection.hitPoint;
+    const Vector &hitNormal = intersectionInformation->intersection.hitNormal;
     const Mesh &mesh = *intersectionInformation->object;
 
     Vector finalColor(0, 0, 0);
@@ -386,7 +387,12 @@ Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   return this->scene.sceneSettings.sceneBackgroundColor;
 }
 
-std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
+std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
+  if (this->useBounding) {
+    if (this->boundingType == Tree) {
+      return this->accelerationStructure.intersect(ray);
+    }
+  }
   float minDistance = std::numeric_limits<float>::infinity();
   const Mesh *intersectedObject = nullptr;
   const Triangle *intersectedTriangle = nullptr;
@@ -394,9 +400,9 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
 
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
+      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle);
       if (tempIntersection.has_value()) {
-        float distance = (tempIntersection.value().hitPoint - ray.origin).length();
+        float distance = tempIntersection.value().distance;  // t*ray.direction
         if (distance < minDistance) {
           minDistance = distance;
           intersectedObject = &object;
@@ -407,19 +413,38 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ra
     }
   }
   if (intersectedObject != nullptr) {
-    //
+    bool calculateUV = intersectedObject->material.smoothShading;
+    float u = 0;
+    float v = 0;
 #if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-    IntersectionInformation temp{intersectedObject,      intersectedTriangle, intersection.hitPoint,
-                                 intersection.hitNormal, intersection.u,      intersection.v};
+    calculateUV = true;
+#endif  // BARYCENTRIC || USE_TEXTURES
+    if (calculateUV) {
+      std::pair<float, float> UV = intersectedTriangle->getBarycentricCoordinates(intersection.hitPoint);
+      u = UV.first;
+      v = UV.second;
+      if (intersectedObject->material.smoothShading) {
+        intersection.hitNormal =
+            (intersectedTriangle[1].getTriangleNormal() * u + intersectedTriangle[2].getTriangleNormal() * v +
+             intersectedTriangle[0].getTriangleNormal() * (1 - u - v));
+        intersection.hitNormal.normalize();
+      }
+    }
+
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
+    IntersectionInformation temp{intersectedObject, intersectedTriangle, intersection, u, v};
     return temp;
+#else
+    return IntersectionInformation{intersectedObject, intersectedTriangle, intersection};
 #endif  // BARYCENTRIC
-    return IntersectionInformation{intersectedObject, intersectedTriangle, intersection.hitPoint,
-                                   intersection.hitNormal};
   }
   return {};
 }
 
 bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
+  if (this->useBounding && this->boundingType == Tree) {
+    return this->accelerationStructure.checkForIntersection(ray, distanceToLight);
+  }
   for (auto &object : this->scene.objects) {
 #if (!defined GLOBAL_ILLUMINATION) || ((defined GLOBAL_ILLUMINATION) && !GLOBAL_ILLUMINATION)
     if (ray.rayType == ShadowRay && object.material.type == Refractive) {
@@ -427,7 +452,7 @@ bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) con
     }
 #endif
     for (auto &triangle : object.triangles) {
-      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle, object.material.smoothShading);
+      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle);
       if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
         return true;
       }
