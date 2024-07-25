@@ -1,7 +1,4 @@
 #pragma once
-#include <atomic>
-#include <cstddef>
-#include <optional>
 #include <vector>
 
 #include "tracer/Camera.h"
@@ -17,7 +14,7 @@ struct Image {
 struct SceneSettings {
   Color sceneBackgroundColor;
   Image image;
-  unsigned int bucketSize;
+  unsigned int bucketSize = 1;
 };
 
 struct Light {
@@ -29,26 +26,22 @@ class Mesh {
  public:
   const Material &material;
   std::vector<Vertex> vertices;
-  size_t beginIncluded;
-  size_t endExcluded;
+  std::vector<unsigned int> indexes;
+  std::vector<Triangle> triangles;
 
  public:
-  Mesh(const Material &material, const std::vector<Vertex> &vertices, const size_t beginIterator,
-       const size_t endIterator);
+  Mesh(const Material &material, const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indexes);
   Mesh(const Mesh &other);
   Mesh(Mesh &&other) noexcept;
 
   Mesh &operator=(const Mesh &other) = delete;
-  Mesh &operator=(Mesh &&other) noexcept = delete;
-  bool containsTriangle(const size_t triangleIndex) const;
+  Mesh &operator=(Mesh &&other) = delete;
 };
 
 struct IntersectionInformation {
-  size_t triangleIndex;
-  Mesh *object;
-  float distance;
-  Vector hitPoint;
-  Vector hitNormal;
+  const Mesh *object;
+  const Triangle *triangle;
+  Intersection intersection;
 #if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
   float u;
   float v;
@@ -64,13 +57,7 @@ struct Scene {
   std::vector<Material> materials;
   std::vector<Light> lights;
   std::vector<Mesh> objects;
-  std::vector<Triangle> triangles;
-  std::atomic<size_t> lastObjectIndex;
 
- private:
-  size_t binarySearch(const size_t leftIncluded, const size_t rightExcluded, const size_t triangleIndex) const;
-
- public:
   Scene();
 
   Scene(Scene &&other) noexcept;
@@ -80,7 +67,4 @@ struct Scene {
   Scene &operator=(const Scene &other) = delete;
 
   ~Scene();
-
-  size_t getObject(const size_t triangleIndex);
-  std::optional<IntersectionInformation> trace(const Ray &ray, const std::vector<size_t> &triangleIndexes) const;
 };

@@ -6,7 +6,6 @@
 #include "tracer/Camera.h"
 #include "tracer/Scene.h"
 #include "tracer/Texture.h"
-#include "tracer/Triangle.h"
 
 class SceneParser {
  private:
@@ -36,8 +35,8 @@ class SceneParser {
   static std::vector<Texture*> parseTextures(const rapidjson::Document& document, const std::string& basePath);
   static std::vector<Material> parseMaterials(const rapidjson::Document& document,
                                               const std::vector<Texture*>& textures = {});
-  static void parseSceneObjects(const rapidjson::Document& document, const std::vector<Material>& materials,
-                                std::vector<Mesh>& objects, std::vector<Triangle>& triangles);
+  static std::vector<Mesh> parseSceneObjects(const rapidjson::Document& document,
+                                             const std::vector<Material>& materials);
 
  public:
   explicit SceneParser();

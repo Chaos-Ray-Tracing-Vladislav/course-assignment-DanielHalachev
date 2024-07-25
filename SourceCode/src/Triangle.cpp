@@ -64,10 +64,10 @@ float Triangle::area() const {
   return this->normal.length() / 2;
 }
 
-std::pair<float, float> Triangle::getBarycentricCoordinates(const Vector &hitPoint) const {
+std::pair<float, float> Triangle::getBarycentricCoordinates(const Vector &intersectionPoint) const {
   float u = 0;
   float v = 0;
-  Vector v0p = hitPoint - this->vertices[0]->position;
+  Vector v0p = intersectionPoint - this->vertices[0]->position;
   Vector v0v1 = this->vertices[1]->position - this->vertices[0]->position;
   Vector v0v2 = this->vertices[2]->position - this->vertices[0]->position;
   float area = (v0v1 * v0v2).length();

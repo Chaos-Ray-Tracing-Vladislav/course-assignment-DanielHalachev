@@ -9,12 +9,6 @@ struct Intersection {
   float distance;
   Vector hitPoint;
   Vector hitNormal;
-
-// Ugly, I know :-D
-#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
-  float u;
-  float v;
-#endif  // BARYCENTRIC
 };
 
 enum RayType { PrimaryRay, ShadowRay, ReflectionRay, RefractionRay, DiffuseRay };
