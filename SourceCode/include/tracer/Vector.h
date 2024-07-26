@@ -19,6 +19,7 @@ class Vector {
   Vector operator*(const Vector &other) const;
   Vector operator*(float scalar) const;
   friend Vector operator*(float lhs, const Vector &rhs);
+  bool operator==(const Vector &other) const;
   friend std::ostream &operator<<(std::ostream &os, const Vector &vector);
   friend std::istream &operator>>(std::istream &is, Vector &vector);
   void normalize();

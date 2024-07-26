@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstring>
 #include <fstream>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -100,7 +101,8 @@ SceneSettings SceneParser::parseSceneSettings(const rapidjson::Document& documen
       const rapidjson::Value& bucketSizeValue = imageSettingsValue.FindMember("bucket_size")->value;
       assert(!imageWidthValue.IsNull() && imageWidthValue.IsInt());
       assert(!imageHeightValue.IsNull() && imageHeightValue.IsInt());
-      unsigned int bucketSize = 1;
+      unsigned int bucketSize =
+          (std::thread::hardware_concurrency() == 1) ? (1) : (std::thread::hardware_concurrency() * 6);
       if (!bucketSizeValue.IsNull() && bucketSizeValue.IsInt()) {
         bucketSize = bucketSizeValue.GetInt();
       }

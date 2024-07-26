@@ -10,11 +10,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle)
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  // material shouldn't be refractive, because refraction direction doesn't matter for intersection
-  // its debatable whether it should be reflective
-  if (this->rayType == PrimaryRay && normalDotRayDirection >= 0
-      // std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()  //
-  ) {
+  if (this->rayType == PrimaryRay && normalDotRayDirection >= 0) {
     return {};
   }
 

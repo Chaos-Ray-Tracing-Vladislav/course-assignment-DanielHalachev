@@ -12,10 +12,10 @@ class BoundingBox {
   Vector maxPoint;
 
   void initializeMinMaxPoints() {
-    minPoint =
+    this->minPoint =
         Vector(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-    maxPoint = Vector(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
-                      std::numeric_limits<float>::lowest());
+    this->maxPoint = Vector(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(),
+                            std::numeric_limits<float>::lowest());
   }
 
  public:
@@ -86,10 +86,8 @@ class BoundingBox {
     float t0 = std::numeric_limits<float>::lowest();
     float t1 = std::numeric_limits<float>::max();
 
-    constexpr float epsilon = 1e-8;
-
     for (int i = 0; i < 3; ++i) {
-      if (std::abs(ray.direction[i]) < epsilon) {
+      if (std::abs(ray.direction[i]) < std::numeric_limits<float>::epsilon()) {
         if (ray.origin[i] < minPoint[i] || ray.origin[i] > maxPoint[i]) {
           return false;
         }

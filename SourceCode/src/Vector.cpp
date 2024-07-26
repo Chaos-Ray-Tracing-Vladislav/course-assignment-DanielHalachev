@@ -72,6 +72,15 @@ Vector operator*(float lhs, const Vector& rhs) {
   return {lhs * rhs.values[0], lhs * rhs.values[1], lhs * rhs.values[2]};
 }
 
+bool Vector::operator==(const Vector& other) const {
+  for (auto i = 0; i < this->values.size(); i++) {
+    if (this->values[i] != other.values[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::ostream& operator<<(std::ostream& os, const Vector& vector) {
   os << "[" << vector.values[0] << "," << vector.values[1] << "," << vector.values[2] << "]";
   return os;

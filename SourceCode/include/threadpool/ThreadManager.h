@@ -18,7 +18,7 @@ class ThreadManager {
   explicit ThreadManager(unsigned int numberOfThreads) : isWorking(true) {
     threads.reserve(numberOfThreads);
     for (unsigned int i = 0; i < numberOfThreads; i++) {
-      threads.emplace_back([this, i] { threadProcess(); });
+      threads.emplace_back([this] { threadProcess(); });
     }
   }
   ThreadManager(const ThreadManager &other) = delete;

@@ -15,10 +15,6 @@ Triangle::Triangle(Vertex &v1, Vertex &v2, Vertex &v3) : vertices{&v1, &v2, &v3}
   this->normal.normalize();
 }
 
-Vertex &Triangle::operator[](unsigned short i) {
-  return *this->vertices[i];
-}
-
 const Vertex &Triangle::operator[](unsigned short i) const {
   return *this->vertices[i];
 }
@@ -34,7 +30,7 @@ const Vector &Triangle::getTriangleNormal() const {
   return this->normal;
 }
 
-const std::array<Vertex *, TRIANGLE_NUM_VERTICES> &Triangle::getVertices() const {
+const std::array<const Vertex *const, TRIANGLE_NUM_VERTICES> &Triangle::getVertices() const {
   return this->vertices;
 }
 

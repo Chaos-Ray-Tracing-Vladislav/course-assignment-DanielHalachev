@@ -1,6 +1,8 @@
 #include "tree/KDTree.h"
 
+#include <iostream>
 #include <stack>
+#include <string>
 
 #include "tracer/Ray.h"
 #include "tree/AccelerationStructure.h"
@@ -57,7 +59,7 @@ std::optional<IntersectionInformation> KDTree<Triangle>::intersect(const Ray &ra
         for (auto triangleIndex : currentNode.indexes) {
           std::optional<Intersection> intersection = ray.intersectWithTriangle(this->container->at(triangleIndex));
           if (intersection.has_value()) {
-            intersections.emplace_back(nullptr, &this->container->at(triangleIndex), intersection.value());
+            intersections.emplace_back(nullptr, &(this->container->at(triangleIndex)), intersection.value());
           }
         }
       } else {
@@ -73,7 +75,7 @@ std::optional<IntersectionInformation> KDTree<Triangle>::intersect(const Ray &ra
   if (intersections.empty()) {
     return {};
   }
-  IntersectionInformation closestIntersection;
+  IntersectionInformation closestIntersection = intersections[0];
   float minDistance = std::numeric_limits<float>::infinity();
   for (auto &intersectionInformation : intersections) {
     if (intersectionInformation.intersection.distance < minDistance) {
@@ -154,7 +156,7 @@ std::optional<IntersectionInformation> KDTree<ObjectKDTreeSubTree>::intersect(co
   if (intersections.empty()) {
     return {};
   }
-  IntersectionInformation closestIntersection;
+  IntersectionInformation closestIntersection = intersections[0];
   float minDistance = std::numeric_limits<float>::infinity();
   for (auto &intersectionInformation : intersections) {
     if (intersectionInformation.intersection.distance < minDistance) {
@@ -177,8 +179,8 @@ std::optional<IntersectionInformation> KDTree<ObjectKDTreeSubTree>::intersect(co
     v = UV.second;
     if (intersectedObject->material.smoothShading) {
       closestIntersection.intersection.hitNormal =
-          (intersectedTriangle[1].getTriangleNormal() * u + intersectedTriangle[2].getTriangleNormal() * v +
-           intersectedTriangle[0].getTriangleNormal() * (1 - u - v));
+          ((*intersectedTriangle)[1].normal * u + (*intersectedTriangle)[2].normal * v +
+           (*intersectedTriangle)[0].normal * (1 - u - v));
       closestIntersection.intersection.hitNormal.normalize();
     }
   }

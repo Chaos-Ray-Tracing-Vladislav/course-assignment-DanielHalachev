@@ -4,39 +4,47 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <ctime>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <queue>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "threadpool/ThreadManager.h"
+#include "tracer/Camera.h"
+#include "tracer/Ray.h"
 #include "tracer/Scene.h"
+#include "tracer/Vector.h"
 
-const float PI = (22.0f / 7.0f);
-thread_local std::default_random_engine RayTracer::engine;
+const float PI = M_PI;
+thread_local std::default_random_engine RayTracer::engine(clock() ^
+                                                          std::hash<std::thread::id>{}(std::this_thread::get_id()));
 thread_local std::uniform_real_distribution<float> RayTracer::distribution(0.0f, 1.0f);
 
 void RayTracer::printProgress(double percentage) {
-  const int progressBarWidth = 60;
-  const std::string str(progressBarWidth, '|');
-  const char *progressBarString = str.c_str();
-  int val = static_cast<int>(percentage * 100);
-  int leftPadding = static_cast<int>(percentage * progressBarWidth);
-  int rightPadding = progressBarWidth - leftPadding;
+  // const int progressBarWidth = 60;
+  // const std::string str(progressBarWidth, '|');
+  // const char *progressBarString = str.c_str();
+  // int val = static_cast<int>(percentage * 100);
+  // int leftPadding = static_cast<int>(percentage * progressBarWidth);
+  // int rightPadding = progressBarWidth - leftPadding;
 
-  printf("\r%3d%% [%.*s%*s] [%i / %i]", val, leftPadding, progressBarString, rightPadding, "",
-         this->rectanglesDone.load(), this->rectangleCount);
-  // this could be interrupted by another thread
-  // but this is a sacrifice I'm willing to make :-D
-  fflush(stdout);
+  // printf("\r%3d%% [%.*s%*s] [%i / %i]", val, leftPadding, progressBarString, rightPadding, "",
+  //        this->rectanglesDone.load(), this->rectangleCount);
+  // // this could be interrupted by another thread
+  // // but this is a sacrifice I'm willing to make :-D
+  // fflush(stdout);
 }
 
-RayTracer::RayTracer(Scene &scene) : boundingBox(scene), accelerationStructure(scene) {
-  this->scene = std::move(scene);
+RayTracer::RayTracer(Scene &scene)
+    : boundingBox(scene), accelerationStructure(scene), scene(std::move(scene)), camera(scene.camera) {
   this->colorBuffer.resize(this->scene.sceneSettings.image.height);
   for (auto &row : colorBuffer) {
     row.resize(this->scene.sceneSettings.image.width);
@@ -44,16 +52,18 @@ RayTracer::RayTracer(Scene &scene) : boundingBox(scene), accelerationStructure(s
 };
 
 const Camera &RayTracer::getCamera() const {
-  return this->scene.camera;
+  return this->camera;
 }
 
 Camera &RayTracer::setCamera() {
-  return this->scene.camera;
+  return this->camera;
 }
 
-Ray RayTracer::getRay(unsigned int pixelRow, unsigned int pixelCol) const {
-  float x = static_cast<float>(pixelCol) + 0.5f;
-  float y = static_cast<float>(pixelRow) + 0.5f;
+Ray RayTracer::getRay(unsigned int pixelRow, unsigned int pixelCol, const bool random) const {
+  float offsetX = random ? distribution(engine) : 0.5f;
+  float offsetY = random ? distribution(engine) : 0.5f;
+  float x = static_cast<float>(pixelCol) + offsetX;
+  float y = static_cast<float>(pixelRow) + offsetY;
 
   x = x / static_cast<float>(this->scene.sceneSettings.image.width);
   y = y / static_cast<float>(this->scene.sceneSettings.image.height);
@@ -65,9 +75,9 @@ Ray RayTracer::getRay(unsigned int pixelRow, unsigned int pixelCol) const {
            static_cast<float>(this->scene.sceneSettings.image.height));
 
   Vector direction(x, y, -1.0);
-  direction = direction * this->scene.camera.getRotationMatrix();
+  direction = direction * this->camera.getRotationMatrix();
   direction.normalize();
-  return Ray(this->scene.camera.getPosition(), direction, PrimaryRay);
+  return Ray(this->camera.getPosition(), direction, PrimaryRay);
 }
 
 void RayTracer::renderRectangle(unsigned int rowIndex, unsigned int columnIndex, unsigned int width,
@@ -76,7 +86,26 @@ void RayTracer::renderRectangle(unsigned int rowIndex, unsigned int columnIndex,
   unsigned int columnLimit = std::min(this->scene.sceneSettings.image.width, columnIndex + width);
   for (unsigned int pixelRow = rowIndex; pixelRow < rowLimit; pixelRow++) {
     for (unsigned int pixelCol = columnIndex; pixelCol < columnLimit; pixelCol++) {
-      this->colorBuffer[pixelRow][pixelCol] = this->shootRay(this->getRay(pixelRow, pixelCol));
+      Ray ray = this->getRay(pixelRow, pixelCol, false);
+      const Color color = this->shootRay(ray);
+      if (this->renderOptions.USE_GI) {
+        std::vector<Color> colorVector;
+        colorVector.reserve(this->renderOptions.RAYS_PER_PIXEL);
+        colorVector.push_back(color);
+        for (unsigned int rayNum = 1; rayNum < this->renderOptions.RAYS_PER_PIXEL; rayNum++) {
+          Ray loopRay = this->getRay(pixelRow, pixelCol, true);
+          const Color loopColor = this->shootRay(loopRay);
+          colorVector.push_back(loopColor);
+          if (loopColor == this->scene.sceneSettings.sceneBackgroundColor) {
+            break;
+          }
+        }
+        this->colorBuffer[pixelRow][pixelCol] =
+            std::accumulate(colorVector.begin(), colorVector.end(), Color(0, 0, 0)) *
+            (1.0f / static_cast<float>(colorVector.size()));
+      } else {
+        this->colorBuffer[pixelRow][pixelCol] = color;
+      }
     }
   }
   this->rectanglesDone++;
@@ -88,9 +117,14 @@ void RayTracer::renderRegions() {
   if (threadNumY == 0) {
     threadNumY = 1;
   }
+
   unsigned int threadNumX = this->rectangleCount / threadNumY;
   unsigned int regionWidth = this->scene.sceneSettings.image.width / threadNumX;
   unsigned int regionHeight = this->scene.sceneSettings.image.height / threadNumY;
+  if (this->threadCount == 1) {
+    renderRectangle(0, 0, regionWidth, regionHeight);
+    return;
+  }
   std::vector<std::thread> threads;
   threads.reserve(this->threadCount);
   for (auto i = 0; i < this->threadCount; i++) {
@@ -165,10 +199,11 @@ void RayTracer::renderBucketsQueue() {
   }
 }
 
-std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage, RenderOptimization optimization) {
+std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage, RenderOptions renderOptions) {
+  this->renderOptions = renderOptions;
   auto startTime = std::chrono::high_resolution_clock::now();
   printProgress(0);
-  switch (optimization) {
+  switch (this->renderOptions.optimization) {
     case NoOptimization: {
       this->useBounding = false;
       this->threadCount = 1;
@@ -178,24 +213,28 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
     }
     case Regions: {
       this->useBounding = false;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = std::thread::hardware_concurrency();
       renderRegions();
       break;
     }
     case BucketsThreadPool: {
       this->useBounding = false;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       renderBucketsThreadpool();
       break;
     }
     case BucketsQueue: {
       this->useBounding = false;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       renderBucketsQueue();
       break;
     }
     case AABB: {
       this->useBounding = true;
+      this->boundingType = SingleBoundingBox;
       this->threadCount = 1;
       this->rectangleCount = 1;
       this->renderRegions();
@@ -203,12 +242,16 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
     }
     case BucketsThreadPoolAABB: {
       this->useBounding = true;
+      this->boundingType = SingleBoundingBox;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       this->renderBucketsThreadpool();
       break;
     }
     case BucketsQueueAABB: {
       this->useBounding = true;
+      this->boundingType = SingleBoundingBox;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       this->renderBucketsQueue();
       break;
@@ -217,12 +260,14 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
       this->useBounding = true;
       this->boundingType = Tree;
       this->threadCount = 1;
+      this->rectangleCount = 1;
       this->renderRegions();
       break;
     }
     case BHVBucketsThreadPool: {
       this->useBounding = true;
       this->boundingType = Tree;
+      this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       this->renderBucketsThreadpool();
       break;
@@ -241,141 +286,151 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
   return colorBuffer;
 }
 
-Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) {
+Color RayTracer::calculateDiffusion(const unsigned int depth, const IntersectionInformation &intersectionInformation) {
+  Vector finalColor(0, 0, 0);
+
+  const Vector &intersectionPoint = intersectionInformation.intersection.hitPoint;
+  const Vector &hitNormal = intersectionInformation.intersection.hitNormal;
+  const Mesh &mesh = *intersectionInformation.object;
+
+  for (auto &light : this->scene.lights) {
+    Vector lightDirection = light.position - intersectionPoint;
+    float distanceToLight = lightDirection.length();
+    float sphereRadius = lightDirection.length();
+    float sphereArea = 4 * sphereRadius * sphereRadius * PI;
+    lightDirection.normalize();
+    float angle = std::max(0.0f, lightDirection.dot(hitNormal));
+
+    Ray shadowRay(intersectionPoint + hitNormal * this->renderOptions.SHADOW_BIAS, lightDirection, RayType::ShadowRay);
+    bool shadowRayIntersection = hasIntersection(shadowRay, distanceToLight);
+
+    if (!shadowRayIntersection) {
+      float directLightContribution = (static_cast<float>(light.intentsity) / sphereArea * angle);
+#if (defined USE_TEXTURES) && USE_TEXTURES
+      finalColor += directLightContribution * mesh.material.texture.getColor(
+                                                  *intersectionInformation.triangle,
+                                                  Vector(intersectionInformation.u, intersectionInformation.v,
+                                                         1.0f - intersectionInformation.u - intersectionInformation.v));
+#else
+      finalColor += directLightContribution * mesh.material.albedo;
+#endif  // USE_TEXTURE
+    }
+
+    if (this->renderOptions.USE_GI) {
+      Color indirectLightContribution(0, 0, 0);
+      unsigned int sampleSize = this->renderOptions.GI_SAMPLE_SIZE;
+      Vector Ny = hitNormal;
+      Vector Nx;
+      Vector Nz;
+      if (std::fabs(Ny[0]) > std::fabs(Ny[1])) {
+        Nx = Vector(Ny[2], 0, -Ny[0]) * (1 / std::sqrtf(Ny[0] * Ny[0] + Ny[2] * Ny[2]));
+      } else {
+        Nx = Vector(0, -Ny[2], Ny[1]) * (1 / sqrtf(Ny[1] * Ny[1] + Ny[2] * Ny[2]));
+      }
+      Nz = Ny * Nx;
+      float probabilityDistributionFunction = 1.0f / (2.0f * PI);
+      for (auto i = 0; i < sampleSize; i++) {
+        float angle1 = RayTracer::distribution(RayTracer::engine);
+        float angle2 = RayTracer::distribution(RayTracer::engine);
+        Vector sample = Vector::getVectorSampleOnHemisphere(angle1, angle2);
+        Vector sampleInWorldCoordinates(  //
+            sample[0] * Nz[0] + sample[1] * Ny[0] + sample[2] * Nx[0],
+            sample[0] * Nz[1] + sample[1] * Ny[1] + sample[2] * Nx[1],
+            sample[0] * Nz[2] + sample[1] * Ny[2] + sample[2] * Nx[2]);
+        Ray sampleRay = Ray(intersectionPoint + sampleInWorldCoordinates * this->renderOptions.MONTE_CARLO_BIAS,
+                            sampleInWorldCoordinates, DiffuseRay);
+        indirectLightContribution += (angle1 / probabilityDistributionFunction) * shootRay(sampleRay, depth + 1);
+      }
+      indirectLightContribution = indirectLightContribution * (1.0f / static_cast<float>(sampleSize));
+      finalColor += indirectLightContribution * mesh.material.albedo;
+    }
+  }
+  return finalColor;
+}
+Color RayTracer::calculateReflection(const Ray &ray, const unsigned int depth,
+                                     const IntersectionInformation &intersectionInformation) {
+  Vector finalColor(0, 0, 0);
+
+  const Vector &intersectionPoint = intersectionInformation.intersection.hitPoint;
+  const Vector &hitNormal = intersectionInformation.intersection.hitNormal;
+  const Mesh &mesh = *intersectionInformation.object;
+
+  Ray reflectionRay(intersectionPoint + hitNormal * this->renderOptions.REFLECTION_BIAS,
+                    ray.direction.reflect(hitNormal).getNormalized(), ReflectionRay);
+  Color reflectionColor = shootRay(reflectionRay, depth + 1);
+  finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
+                      mesh.material.albedo[1] * reflectionColor[1],  // green
+                      mesh.material.albedo[2] * reflectionColor[2]   // blue
+  );
+  return finalColor;
+}
+Color RayTracer::calculateRefraction(const Ray &ray, const unsigned int depth,
+                                     const IntersectionInformation &intersectionInformation) {
+  const Vector &intersectionPoint = intersectionInformation.intersection.hitPoint;
+  const Vector &hitNormal = intersectionInformation.intersection.hitNormal;
+  const Mesh &mesh = *intersectionInformation.object;
+
+  float eta1 = 1.0f;
+  float eta2 = mesh.material.ior;
+  Vector normal = hitNormal;
+  float incidentDotNormal = ray.direction.dot(normal);
+
+  if (incidentDotNormal > 0) {
+    std::swap(eta1, eta2);
+    normal = -1 * normal;
+    incidentDotNormal = -incidentDotNormal;
+  }
+
+  Color reflectionColor(0, 0, 0);
+  Color refractionColor(0, 0, 0);
+
+  float cosineAlpha = -incidentDotNormal;
+  float sineAlpha = std::sqrtf(std::max(0.0f, 1 - cosineAlpha * cosineAlpha));
+
+  Ray reflectionRay(intersectionPoint + normal * this->renderOptions.REFLECTION_BIAS,
+                    ray.direction.reflect(normal).getNormalized(), ReflectionRay);
+  reflectionColor = shootRay(reflectionRay, depth + 1);
+
+  float etaRatio = eta1 / eta2;
+  float sineBeta = etaRatio * sineAlpha;
+
+  if (sineBeta < 1.0f) {
+    float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
+    float fresnelCoefficient = R0 + (1 - R0) * std::powf(1.0f - cosineAlpha, 5);
+
+    float cosineBeta = std::sqrtf(std::max(0.0f, 1 - sineBeta * sineBeta));
+    Vector refractionDirection = etaRatio * (ray.direction + cosineAlpha * normal) - cosineBeta * normal;
+    Ray refractionRay(intersectionPoint - normal * this->renderOptions.REFRACTION_BIAS,
+                      refractionDirection.getNormalized(), RefractionRay);
+    refractionColor = shootRay(refractionRay, depth + 1);
+    return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
+  }
+  return reflectionColor;
+}
+
+Color RayTracer::shootRay(Ray &ray, const unsigned int depth) {
+  ray.direction.normalize();
   if (this->useBounding && this->boundingType == SingleBoundingBox) {
     if (!this->boundingBox.hasIntersection(ray)) {
       return this->scene.sceneSettings.sceneBackgroundColor;
     }
   }
 
-  if (depth > MAX_DEPTH) {
+  if (depth > this->renderOptions.MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
-  std::optional<IntersectionInformation> intersectionInformation = trace(ray);
-  if (intersectionInformation.has_value()) {
-#if defined(BARYCENTRIC) && BARYCENTRIC
-    return Color(intersectionInformation->u, intersectionInformation->v, 0);
-#endif  // BARYCENTRIC
-    const Vector &intersectionPoint = intersectionInformation->intersection.hitPoint;
-    const Vector &hitNormal = intersectionInformation->intersection.hitNormal;
-    const Mesh &mesh = *intersectionInformation->object;
-
-    Vector finalColor(0, 0, 0);
-
-    switch (mesh.material.type) {
+  std::optional<IntersectionInformation> intersectionInformationOptional = trace(ray);
+  if (intersectionInformationOptional.has_value()) {
+    IntersectionInformation intersectionInformation = intersectionInformationOptional.value();
+    switch (intersectionInformation.object->material.type) {
       case Diffuse: {
-        for (auto &light : this->scene.lights) {
-          Vector lightDirection = light.position - intersectionPoint;
-          float distanceToLight = lightDirection.length();
-          float sphereRadius = lightDirection.length();
-          float sphereArea = 4 * sphereRadius * sphereRadius * PI;
-          lightDirection.normalize();
-          float angle = std::max(0.0f, lightDirection.dot(hitNormal));
-
-          Ray shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection, RayType::ShadowRay);
-          bool shadowRayIntersection = hasIntersection(shadowRay, distanceToLight);
-
-          if (!shadowRayIntersection) {
-            float directLightContribution = (static_cast<float>(light.intentsity) / sphereArea * angle);
-#if (defined USE_TEXTURES) && USE_TEXTURES
-            finalColor +=
-                directLightContribution *
-                mesh.material.texture.getColor(*intersectionInformation->triangle,
-                                               Vector(intersectionInformation->u, intersectionInformation->v,
-                                                      1.0f - intersectionInformation->u - intersectionInformation->v));
-#else
-            finalColor += directLightContribution * mesh.material.albedo;
-#endif  // USE_TEXTURE
-          }
-
-#if defined(GLOBAL_ILLUMINATION) && GLOBAL_ILLUMINATION
-          // let P be the intersection point
-          // we draw a half-sphere
-          // we create a local coordinate system, the y axis of which is aligned with the hit normal
-          // there are a total of N = sampleSize such rays
-          // we trace the ray to determine the light contribution
-          // we determine the light contribution and divide by the sample size according to the Monte Carlo technique
-          Color indirectLightContribution(0, 0, 0);
-          unsigned int sampleSize = DEFAULT_SAMPLE_SIZE;
-          Vector Ny = hitNormal;
-          Vector Nx;
-          Vector Nz;
-          if (std::fabs(Ny[0]) > std::fabs(Ny[1])) {
-            Nx = Vector(Ny[2], 0, -Ny[0]) * (1 / std::sqrtf(Ny[0] * Ny[0] + Ny[2] * Ny[2]));
-          } else {
-            Nx = Vector(0, -Ny[2], Ny[1]) * (1 / sqrtf(Ny[1] * Ny[1] + Ny[2] * Ny[2]));
-          }
-          Nz = Ny * Nx;
-          float probabilityDistributionFunction = 1.0f / (2.0f * PI);
-          for (auto i = 0; i < sampleSize; i++) {
-            float angle1 = RayTracer::distribution(RayTracer::engine);
-            float angle2 = RayTracer::distribution(RayTracer::engine);
-            Vector sample = Vector::getVectorSampleOnHemisphere(angle1, angle2);
-            Vector sampleInWorldCoordinates(  //
-                sample[0] * Nz[0] + sample[1] * Ny[0] + sample[2] * Nx[0],
-                sample[0] * Nz[1] + sample[1] * Ny[1] + sample[2] * Nx[1],
-                sample[0] * Nz[2] + sample[1] * Ny[2] + sample[2] * Nx[2]);
-            indirectLightContribution += angle1 / probabilityDistributionFunction *
-                                         shootRay(Ray(intersectionPoint + sampleInWorldCoordinates * MONTE_CARLO_BIAS,
-                                                      sampleInWorldCoordinates, DiffuseRay),
-                                                  depth + 1);
-            indirectLightContribution = indirectLightContribution * (1.0f / static_cast<float>(sampleSize));
-          }
-          finalColor += indirectLightContribution * mesh.material.albedo;
-#endif  // GLOBAL_ILLUMINATION
-        }
-        return finalColor;
+        return this->calculateDiffusion(depth, intersectionInformation);
       }
       case Reflective: {
-        Ray reflectionRay(intersectionPoint + hitNormal * REFLECTION_BIAS,
-                          ray.direction.reflect(hitNormal).getNormalized(), ReflectionRay);
-        Color reflectionColor = shootRay(reflectionRay, depth + 1);
-        finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
-                            mesh.material.albedo[1] * reflectionColor[1],  // green
-                            mesh.material.albedo[2] * reflectionColor[2]   // blue
-        );
-        return finalColor;
+        return this->calculateReflection(ray, depth, intersectionInformation);
       }
       case Refractive: {
-        // float eta1 = IOR;
-        float eta1 = 1.0f;
-        float eta2 = mesh.material.ior;
-        Vector normal = hitNormal;
-        float incidentDotNormal = ray.direction.dot(normal);
-        if (incidentDotNormal > 0) {
-          std::swap(eta1, eta2);
-          normal = -1 * normal;
-          incidentDotNormal = -incidentDotNormal;
-        }
-
-        Color reflectionColor(0, 0, 0);
-        Color refractionColor(0, 0, 0);
-
-        float cosineAlpha = -incidentDotNormal;
-        cosineAlpha = std::clamp(cosineAlpha, -1.0f, 1.0f);
-        float sineAlpha = std::sqrt(1 - cosineAlpha * cosineAlpha);
-
-        Ray reflectionRay(intersectionPoint + normal * REFLECTION_BIAS, ray.direction.reflect(normal).getNormalized(),
-                          ReflectionRay);
-        reflectionColor = shootRay(reflectionRay, depth + 1);
-
-        if (sineAlpha < eta1 / eta2) {
-          float R0 = std::powf((eta1 - eta2) / (eta1 + eta2), 2);
-          float fresnelCoefficient = R0 + (1 - R0) * std::powf(1.0f + incidentDotNormal, 5);
-          // float fresnelCoefficient = 0.5f * std::powf(1.0f + incidentDotNormal, 5);
-
-          float sineBeta = (sineAlpha * eta1) / eta2;
-          sineBeta = std::clamp(sineBeta, -1.0f, 1.0f);
-          float cosineBeta = std::sqrt(1 - sineBeta * sineBeta);
-          Vector refractionDirection = -1 * cosineBeta * normal                                  // A
-                                       + (ray.direction + cosineAlpha * normal).getNormalized()  // C // B
-                                             * sineBeta;                                         //   // B
-          Ray refractionRay(intersectionPoint - normal * REFRACTION_BIAS, refractionDirection, RefractionRay);
-          refractionColor = shootRay(refractionRay, depth + 1);
-          return fresnelCoefficient * reflectionColor + (1 - fresnelCoefficient) * refractionColor;
-        }
-
-        return reflectionColor;
+        return this->calculateRefraction(ray, depth, intersectionInformation);
       }
       default: {
         // neither refractive, reflective, nor diffusive
@@ -393,21 +448,22 @@ std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
       return this->accelerationStructure.intersect(ray);
     }
   }
-  float minDistance = std::numeric_limits<float>::infinity();
+  float minDistance = std::numeric_limits<float>::max();
   const Mesh *intersectedObject = nullptr;
   const Triangle *intersectedTriangle = nullptr;
   Intersection intersection;
 
-  for (auto &object : this->scene.objects) {
-    for (auto &triangle : object.triangles) {
-      std::optional<Intersection> tempIntersection = ray.intersectWithTriangle(triangle);
-      if (tempIntersection.has_value()) {
-        float distance = tempIntersection.value().distance;  // t*ray.direction
+  for (const auto &object : this->scene.objects) {
+    for (const auto &triangle : object.triangles) {
+      std::optional<Intersection> tempIntersectionOptional = ray.intersectWithTriangle(triangle);
+      if (tempIntersectionOptional.has_value()) {
+        const Intersection tempIntersection = tempIntersectionOptional.value();
+        float distance = tempIntersection.distance;  // t*ray.direction
         if (distance < minDistance) {
           minDistance = distance;
           intersectedObject = &object;
           intersectedTriangle = &triangle;
-          intersection = tempIntersection.value();
+          intersection = tempIntersection;
         }
       }
     }
@@ -419,14 +475,13 @@ std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
 #if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
     calculateUV = true;
 #endif  // BARYCENTRIC || USE_TEXTURES
-    if (calculateUV) {
+    if (calculateUV == true) {
       std::pair<float, float> UV = intersectedTriangle->getBarycentricCoordinates(intersection.hitPoint);
       u = UV.first;
       v = UV.second;
       if (intersectedObject->material.smoothShading) {
-        intersection.hitNormal =
-            (intersectedTriangle[1].getTriangleNormal() * u + intersectedTriangle[2].getTriangleNormal() * v +
-             intersectedTriangle[0].getTriangleNormal() * (1 - u - v));
+        intersection.hitNormal = ((*intersectedTriangle)[1].normal * u + (*intersectedTriangle)[2].normal * v +
+                                  (*intersectedTriangle)[0].normal * (1 - u - v));
         intersection.hitNormal.normalize();
       }
     }
@@ -442,19 +497,32 @@ std::optional<IntersectionInformation> RayTracer::trace(const Ray &ray) const {
 }
 
 bool RayTracer::hasIntersection(const Ray &ray, const float distanceToLight) const {
-  if (this->useBounding && this->boundingType == Tree) {
-    return this->accelerationStructure.checkForIntersection(ray, distanceToLight);
-  }
-  for (auto &object : this->scene.objects) {
-#if (!defined GLOBAL_ILLUMINATION) || ((defined GLOBAL_ILLUMINATION) && !GLOBAL_ILLUMINATION)
-    if (ray.rayType == ShadowRay && object.material.type == Refractive) {
-      continue;
+  if (this->useBounding) {
+    switch (this->boundingType) {
+      case SingleBoundingBox:
+        if (this->boundingBox.hasIntersection(ray) == false) {
+          return false;
+        }
+        break;
+      case Tree: {
+        return this->accelerationStructure.checkForIntersection(ray, distanceToLight, this->renderOptions.USE_GI);
+        break;
+      }
     }
-#endif
-    for (auto &triangle : object.triangles) {
-      std::optional<Intersection> intersection = ray.intersectWithTriangle(triangle);
-      if (intersection.has_value() && (intersection->hitPoint - ray.origin).length() <= distanceToLight) {
-        return true;
+  }
+  for (const auto &object : this->scene.objects) {
+    if (this->renderOptions.USE_GI == false) {
+      if (ray.rayType == ShadowRay && object.material.type == Refractive) {
+        continue;
+      }
+    }
+    for (const auto &triangle : object.triangles) {
+      std::optional<Intersection> intersectionOptional = ray.intersectWithTriangle(triangle);
+      if (intersectionOptional.has_value()) {
+        Intersection intersection = intersectionOptional.value();
+        if ((intersection.hitPoint - ray.origin).length() <= distanceToLight) {
+          return true;
+        }
       }
     }
   }
