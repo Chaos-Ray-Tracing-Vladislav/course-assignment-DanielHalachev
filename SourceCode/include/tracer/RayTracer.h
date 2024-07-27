@@ -68,6 +68,7 @@ class RayTracer {
   unsigned short threadCount = std::thread::hardware_concurrency();
   unsigned short rectangleCount = 1;
   std::atomic_ushort rectanglesDone = 0;
+  std::mutex printMutex;
 
   void printProgress(double percentage);
   Ray getRay(unsigned int pixelRow, unsigned int pixelCol, const bool random) const;
