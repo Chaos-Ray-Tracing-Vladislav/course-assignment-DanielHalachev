@@ -11,13 +11,13 @@ int main() {
   Scene scene = parser.parseScene("scene" + std::to_string(sceneNumber) + ".crtscene", "/home/daniel");
   RayTracer tracer(scene);
   // RenderOptions options{BHVBucketsThreadPool, 5, true, 1, 32};
-  RenderOptions options{BHVBucketsThreadPool, 5, false};
+  RenderOptions options{BVHBucketsThreadPool, 5, false};
 
   const short FPS = 30;
   const short SECONDS = 10;
   const float DEG_CHANGE = 360.0f / (FPS * SECONDS);
 
-  const float radius = 5.12f;  // Radius of the circle around the scene
+  const float radius = 5.12f;
 
   float degrees = 0;
 
@@ -31,7 +31,7 @@ int main() {
     float deltaZ = z + 3;  // z - CenterZ
     tracer.setCamera().setRotationMatrix() = Matrix<3>::IDENTITY_MATRIX;
     float lookAtAngle = std::atan2(deltaX, deltaZ) * (180.0f / M_PIf);
-    tracer.setCamera().pan(lookAtAngle);  // Adjust based on how your pan() method is defined
+    tracer.setCamera().pan(lookAtAngle);
 
     tracer.render("/home/daniel/Result/result" + std::to_string(t) + ".ppm", options);
 

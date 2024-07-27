@@ -17,12 +17,13 @@ enum RenderOptimization {
   AABB,
   BucketsThreadPoolAABB,
   BucketsQueueAABB,
-  BHV,
-  BHVBucketsThreadPool
+  BVH,
+  BVHBucketsThreadPool,
+  BVHBucketsQueue
 };
 
 struct RenderOptions {
-  RenderOptimization optimization = BHVBucketsThreadPool;
+  RenderOptimization optimization = BVHBucketsThreadPool;
   bool USE_GI = false;
   unsigned int MAX_DEPTH = 5;
   unsigned int GI_SAMPLE_SIZE = 2;
@@ -32,7 +33,7 @@ struct RenderOptions {
   float REFRACTION_BIAS = 1e-4;
   float MONTE_CARLO_BIAS = 1e-4;
 
-  explicit RenderOptions(const RenderOptimization optimization = BHVBucketsThreadPool, const unsigned int maxDepth = 5,
+  explicit RenderOptions(const RenderOptimization optimization = BVHBucketsThreadPool, const unsigned int maxDepth = 5,
                          const bool useGI = false, const unsigned int sampleSize = 2,
                          const unsigned int raysPerPixel = 1, const float shadowBias = 1e-4,
                          const float reflectionBias = 1e-4, const float refractionBias = 1e-4,
@@ -49,6 +50,11 @@ struct RenderOptions {
 };
 
 enum BoundingBoxType { SingleBoundingBox, Tree };
+
+struct Region {
+  unsigned int rowIndex;
+  unsigned int colIndex;
+};
 
 class RayTracer {
  private:
@@ -72,7 +78,8 @@ class RayTracer {
 
   void printProgress(double percentage);
   Ray getRay(unsigned int pixelRow, unsigned int pixelCol, const bool random) const;
-  Color calculateDiffusion(const unsigned int depth, const IntersectionInformation &intersectionInformation);
+  Color calculateDiffusion(const Ray &ray, const unsigned int depth,
+                           const IntersectionInformation &intersectionInformation);
   Color calculateReflection(const Ray &ray, const unsigned int depth,
                             const IntersectionInformation &intersectionInformation);
   Color calculateRefraction(const Ray &ray, const unsigned int depth,

@@ -19,6 +19,7 @@
 
 #include "threadpool/ThreadManager.h"
 #include "tracer/Camera.h"
+#include "tracer/Matrix.h"
 #include "tracer/Ray.h"
 #include "tracer/Scene.h"
 #include "tracer/Vector.h"
@@ -94,9 +95,9 @@ void RayTracer::renderRectangle(unsigned int rowIndex, unsigned int columnIndex,
           Ray loopRay = this->getRay(pixelRow, pixelCol, true);
           const Color loopColor = this->shootRay(loopRay);
           colorVector.push_back(loopColor);
-          if (loopColor == this->scene.sceneSettings.sceneBackgroundColor) {
-            break;
-          }
+          // if (loopColor == this->scene.sceneSettings.sceneBackgroundColor) {
+          //   break;
+          // }
         }
         this->colorBuffer[pixelRow][pixelCol] =
             std::accumulate(colorVector.begin(), colorVector.end(), Color(0, 0, 0)) *
@@ -123,6 +124,7 @@ void RayTracer::renderRegions() {
     renderRectangle(0, 0, regionWidth, regionHeight);
     return;
   }
+
   std::vector<std::thread> threads;
   threads.reserve(this->threadCount);
   for (auto i = 0; i < this->threadCount; i++) {
@@ -156,36 +158,38 @@ void RayTracer::renderBucketsThreadpool() {
 }
 
 void RayTracer::renderBucketsQueue() {
-  struct Region {
-    unsigned int rowIndex;
-    unsigned int colIndex;
-  };
-  std::queue<Region> queue;
+  std::vector<Region> queue;
+  queue.reserve(this->rectangleCount);
+  std::queue<Region> shuffledQueue;
   std::mutex mutex;
-  unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(rectangleCount));
+  unsigned int threadNumY = static_cast<unsigned int>(std::sqrt(this->rectangleCount));
   if (threadNumY == 0) {
     threadNumY = 1;
   }
   unsigned int threadNumX = this->rectangleCount / threadNumY;
   unsigned int regionWidth = this->scene.sceneSettings.image.width / threadNumX;
   unsigned int regionHeight = this->scene.sceneSettings.image.height / threadNumY;
-  for (auto i = 0; i < rectangleCount; i++) {
+  for (auto i = 0; i < this->rectangleCount; i++) {
     unsigned column = (i * regionWidth) % this->scene.sceneSettings.image.width;
     unsigned row = (i / threadNumX) * regionHeight;
-    queue.push(Region{row, column});
+    queue.push_back(Region{row, column});
+  }
+  std::shuffle(queue.begin(), queue.end(), engine);
+  for (auto &region : queue) {
+    shuffledQueue.push(region);
   }
   std::vector<std::thread> threads;
   threads.reserve(this->threadCount);
   for (auto i = 0; i < this->threadCount; i++) {
-    threads.push_back(std::thread([this, regionWidth, regionHeight, &queue, &mutex]() {
+    threads.push_back(std::thread([this, regionWidth, regionHeight, &shuffledQueue, &mutex]() {
       while (true) {
         std::unique_lock<std::mutex> lock(mutex);
-        if (queue.empty()) {
+        if (shuffledQueue.empty()) {
           lock.unlock();
           break;
         }
-        Region region = queue.front();
-        queue.pop();
+        Region region = shuffledQueue.front();
+        shuffledQueue.pop();
         lock.unlock();
 
         RayTracer::renderRectangle(region.rowIndex, region.colIndex, regionWidth, regionHeight);
@@ -255,7 +259,7 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
       this->renderBucketsQueue();
       break;
     }
-    case BHV: {
+    case BVH: {
       this->useBounding = true;
       this->boundingType = Tree;
       this->threadCount = 1;
@@ -263,12 +267,20 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
       this->renderRegions();
       break;
     }
-    case BHVBucketsThreadPool: {
+    case BVHBucketsThreadPool: {
       this->useBounding = true;
       this->boundingType = Tree;
       this->threadCount = std::thread::hardware_concurrency();
       this->rectangleCount = this->scene.sceneSettings.bucketSize;
       this->renderBucketsThreadpool();
+      break;
+    }
+    case BVHBucketsQueue: {
+      this->useBounding = true;
+      this->boundingType = Tree;
+      this->threadCount = std::thread::hardware_concurrency();
+      this->rectangleCount = this->scene.sceneSettings.bucketSize;
+      this->renderBucketsQueue();
       break;
     }
   }
@@ -285,7 +297,8 @@ std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage
   return colorBuffer;
 }
 
-Color RayTracer::calculateDiffusion(const unsigned int depth, const IntersectionInformation &intersectionInformation) {
+Color RayTracer::calculateDiffusion(const Ray &ray, const unsigned int depth,
+                                    const IntersectionInformation &intersectionInformation) {
   Vector finalColor(0, 0, 0);
 
   const Vector &intersectionPoint = intersectionInformation.intersection.hitPoint;
@@ -314,38 +327,34 @@ Color RayTracer::calculateDiffusion(const unsigned int depth, const Intersection
       finalColor += directLightContribution * mesh.material.albedo;
 #endif  // USE_TEXTURE
     }
+  }
+  Color indirectLightContribution(0, 0, 0);
+  if (this->renderOptions.USE_GI) {
+    for (auto i = 0; i < this->renderOptions.GI_SAMPLE_SIZE; i++) {
+      Vector upAxis = hitNormal;
+      Vector rightAxis = (ray.direction * hitNormal).getNormalized();
+      Vector forwardAxis = rightAxis * upAxis;
+      Matrix<3> localHitMatrix({rightAxis[0], rightAxis[1], rightAxis[2], upAxis[0], upAxis[1], upAxis[2],
+                                forwardAxis[0], forwardAxis[1], forwardAxis[2]});
 
-    if (this->renderOptions.USE_GI) {
-      Color indirectLightContribution(0, 0, 0);
-      unsigned int sampleSize = this->renderOptions.GI_SAMPLE_SIZE;
-      Vector Ny = hitNormal;
-      Vector Nx;
-      Vector Nz;
-      if (std::fabs(Ny[0]) > std::fabs(Ny[1])) {
-        Nx = Vector(Ny[2], 0, -Ny[0]) * (1 / std::sqrtf(Ny[0] * Ny[0] + Ny[2] * Ny[2]));
-      } else {
-        Nx = Vector(0, -Ny[2], Ny[1]) * (1 / sqrtf(Ny[1] * Ny[1] + Ny[2] * Ny[2]));
-      }
-      Nz = Ny * Nx;
-      float probabilityDistributionFunction = 1.0f / (2.0f * PI);
-      for (auto i = 0; i < sampleSize; i++) {
-        float angle1 = RayTracer::distribution(RayTracer::engine);
-        float angle2 = RayTracer::distribution(RayTracer::engine);
-        Vector sample = Vector::getVectorSampleOnHemisphere(angle1, angle2);
-        Vector sampleInWorldCoordinates(  //
-            sample[0] * Nz[0] + sample[1] * Ny[0] + sample[2] * Nx[0],
-            sample[0] * Nz[1] + sample[1] * Ny[1] + sample[2] * Nx[1],
-            sample[0] * Nz[2] + sample[1] * Ny[2] + sample[2] * Nx[2]);
-        Ray sampleRay = Ray(intersectionPoint + sampleInWorldCoordinates * this->renderOptions.MONTE_CARLO_BIAS,
-                            sampleInWorldCoordinates, DiffuseRay);
-        indirectLightContribution += (angle1 / probabilityDistributionFunction) * shootRay(sampleRay, depth + 1);
-      }
-      indirectLightContribution = indirectLightContribution * (1.0f / static_cast<float>(sampleSize));
-      finalColor += indirectLightContribution * mesh.material.albedo;
+      float angle1 = PI * this->distribution(engine);
+      float angle2 = 2 * PI * this->distribution(engine);
+      Vector randomVectorInXY(std::cosf(angle1), std::sinf(angle1), 0);
+      Matrix<3> rotateAroundY({std::cosf(angle2), 0, -std::sinf(angle2),  //
+                               0.0f, 1.0f, 0.0f,                          //
+                               std::sinf(angle2), 0, std::cosf(angle2)});
+      Vector randomVectorInXYRotated = randomVectorInXY * rotateAroundY;
+      Vector diffuseReflectionDirection = randomVectorInXYRotated * localHitMatrix;
+      Ray diffuseReflectionRay(intersectionPoint + hitNormal * this->renderOptions.MONTE_CARLO_BIAS,
+                               diffuseReflectionDirection, ReflectionRay);
+      indirectLightContribution += shootRay(diffuseReflectionRay, depth + 1);
     }
+    finalColor += indirectLightContribution;
+    return finalColor * (1.0f / static_cast<float>(this->renderOptions.GI_SAMPLE_SIZE + 1));
   }
   return finalColor;
 }
+
 Color RayTracer::calculateReflection(const Ray &ray, const unsigned int depth,
                                      const IntersectionInformation &intersectionInformation) {
   Vector finalColor(0, 0, 0);
@@ -423,7 +432,7 @@ Color RayTracer::shootRay(Ray &ray, const unsigned int depth) {
     IntersectionInformation intersectionInformation = intersectionInformationOptional.value();
     switch (intersectionInformation.object->material.type) {
       case Diffuse: {
-        return this->calculateDiffusion(depth, intersectionInformation);
+        return this->calculateDiffusion(ray, depth, intersectionInformation);
       }
       case Reflective: {
         return this->calculateReflection(ray, depth, intersectionInformation);
