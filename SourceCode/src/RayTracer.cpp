@@ -23,24 +23,22 @@
 #include "tracer/Scene.h"
 #include "tracer/Vector.h"
 
-const float PI = M_PI;
+const float PI = M_PIf;
 thread_local std::default_random_engine RayTracer::engine(clock() ^
                                                           std::hash<std::thread::id>{}(std::this_thread::get_id()));
 thread_local std::uniform_real_distribution<float> RayTracer::distribution(0.0f, 1.0f);
 
 void RayTracer::printProgress(double percentage) {
-  // const int progressBarWidth = 60;
-  // const std::string str(progressBarWidth, '|');
-  // const char *progressBarString = str.c_str();
-  // int val = static_cast<int>(percentage * 100);
-  // int leftPadding = static_cast<int>(percentage * progressBarWidth);
-  // int rightPadding = progressBarWidth - leftPadding;
-
-  // printf("\r%3d%% [%.*s%*s] [%i / %i]", val, leftPadding, progressBarString, rightPadding, "",
-  //        this->rectanglesDone.load(), this->rectangleCount);
-  // // this could be interrupted by another thread
-  // // but this is a sacrifice I'm willing to make :-D
-  // fflush(stdout);
+  const int progressBarWidth = 60;
+  const std::string str(progressBarWidth, '|');
+  const char *progressBarString = str.c_str();
+  int val = static_cast<int>(percentage * 100);
+  int leftPadding = static_cast<int>(percentage * progressBarWidth);
+  int rightPadding = progressBarWidth - leftPadding;
+  std::lock_guard<std::mutex> lock(printMutex);
+  printf("\r%3d%% [%.*s%*s] [%i / %i]", val, leftPadding, progressBarString, rightPadding, "",
+         this->rectanglesDone.load(), this->rectangleCount);
+  fflush(stdout);
 }
 
 RayTracer::RayTracer(Scene &scene)
@@ -201,6 +199,7 @@ void RayTracer::renderBucketsQueue() {
 
 std::vector<std::vector<Color>> RayTracer::render(const std::string &pathToImage, RenderOptions renderOptions) {
   this->renderOptions = renderOptions;
+  this->rectanglesDone = 0;
   auto startTime = std::chrono::high_resolution_clock::now();
   printProgress(0);
   switch (this->renderOptions.optimization) {
