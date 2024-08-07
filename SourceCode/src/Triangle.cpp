@@ -55,5 +55,5 @@ bool Triangle::pointIsInTriangle(const Vector &point) const {
 }
 
 float Triangle::area() const {
-  return this->calculateNormal().length() / 2;
+  return this->normal.length() / 2;
 }

@@ -22,6 +22,7 @@ class Vector {
   friend std::ostream &operator<<(std::ostream &os, const Vector &vector);
   friend std::istream &operator>>(std::istream &is, Vector &vector);
   void normalize();
+  Vector getNormalized() const;
   float length() const;
   Vector reflect(const Vector &normal) const;
   static Vector generateRandom();

@@ -97,15 +97,19 @@ void RayTracer::render() {
 #endif  // MEASURE_TIME
 }
 
-Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) const {
+Color RayTracer::shootRay(const Ray &ray, const unsigned int depth) const {
   if (depth > MAX_DEPTH) {
     return this->scene.sceneSettings.sceneBackgroundColor;
   }
   std::optional<IntersectionInformation> intersectionInformation = trace(ray);
   if (intersectionInformation.has_value()) {
+#if defined(BARYCENTRIC) && BARYCENTRIC
+    return Color(intersectionInformation->u, intersectionInformation->v, 0);
+#endif  // BARYCENTRIC
     const Vector &intersectionPoint = intersectionInformation->intersectionPoint;
     const Vector &hitNormal = intersectionInformation->hitNormal;
     const Mesh &mesh = *intersectionInformation->object;
+
     Vector finalColor(0, 0, 0);
 
     switch (mesh.material.type) {
@@ -117,7 +121,7 @@ Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) con
           lightDirection.normalize();
           float angle = std::max(0.0f, lightDirection.dot(hitNormal));
 
-          Ray<Shadow> shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection);
+          Ray shadowRay(intersectionPoint + hitNormal * SHADOW_BIAS, lightDirection, RayType::Shadow);
           bool shadowRayIntersection = hasIntersection(shadowRay);
 
           if (!shadowRayIntersection) {
@@ -128,24 +132,29 @@ Color RayTracer::shootRay(const Ray<Primary> &ray, const unsigned int depth) con
         return finalColor;
       }
       case Reflect: {
-        Ray reflection = {intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal)};
-        finalColor += shootRay(ray, depth + 1) * mesh.material.albedo;
+        Ray reflectionRay(intersectionPoint + hitNormal * SHADOW_BIAS, ray.direction.reflect(hitNormal).getNormalized(),
+                          Primary);
+        Color reflectionColor = shootRay(reflectionRay, depth + 1);
+        finalColor += Color(mesh.material.albedo[0] * reflectionColor[0],  // red
+                            mesh.material.albedo[1] * reflectionColor[1],  // green
+                            mesh.material.albedo[2] * reflectionColor[2]   // blue
+        );
         return finalColor;
       }
       default: {
-        // std::cout << "fail\n";
+        // neither reflective, nor diffusive
         return this->scene.sceneSettings.sceneBackgroundColor;
       }
     }
   }
+  // if there is no intersection
   return this->scene.sceneSettings.sceneBackgroundColor;
 }
 
-template <RayType T>
-std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray<T> &ray) const {
+std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray &ray) const {
   float minDistance = std::numeric_limits<float>::infinity();
   const Mesh *intersectedObject = nullptr;
-  const Intersection *intersection = nullptr;
+  Intersection intersection;
 
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
@@ -155,18 +164,24 @@ std::optional<RayTracer::IntersectionInformation> RayTracer::trace(const Ray<T> 
         if (distance < minDistance) {
           minDistance = distance;
           intersectedObject = &object;
-          intersection = &tempIntersection.value();
+          intersection = tempIntersection.value();
         }
       }
     }
   }
-  if (intersection != nullptr) {
-    return IntersectionInformation{intersectedObject, intersection->hitPoint, intersection->hitNormal};
+  if (intersectedObject != nullptr) {
+    //
+#if defined(BARYCENTRIC) && BARYCENTRIC
+    IntersectionInformation temp{intersectedObject, intersection.hitPoint, intersection.hitNormal, intersection.u,
+                                 intersection.v};
+    return temp;
+#endif  // BARYCENTRIC
+    return IntersectionInformation{intersectedObject, intersection.hitPoint, intersection.hitNormal};
   }
   return {};
 }
 
-bool RayTracer::hasIntersection(const Ray<Shadow> &ray) const {
+bool RayTracer::hasIntersection(const Ray &ray) const {
   for (auto &object : this->scene.objects) {
     for (auto &triangle : object.triangles) {
       if (ray.intersectWithTriangle(triangle, object.material.smoothShading).has_value()) {
