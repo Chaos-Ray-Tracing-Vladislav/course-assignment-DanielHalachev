@@ -27,7 +27,7 @@ class KDTree {
   const unsigned short MAX_DEPTH;
   const unsigned short AXIS_COUNT = 3;
   std::vector<TreeNode> nodes;
-  std::vector<LeafType> *container;
+  const std::vector<LeafType> *container;
 
  protected:
   unsigned int createNode(const BoundingBox &box, unsigned int firstChildIndex, unsigned int secondChildIndex,

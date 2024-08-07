@@ -3,21 +3,21 @@
 #include <utility>
 
 Mesh::Mesh(const Material &material, const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indexes)
-    : material{material}, vertices{vertices}, indexes{indexes} {
-  triangles.reserve(indexes.size() / 3);
+    : material{material}, vertices{vertices} {
+  this->triangles.reserve(indexes.size() / 3);
   // calculate vertex normals
   // and add triangles
   for (auto i = 0; i < indexes.size(); i += 3) {
-    unsigned int index0 = this->indexes[i];
-    unsigned int index1 = this->indexes[i + 1];
-    unsigned int index2 = this->indexes[i + 2];
+    unsigned int index0 = indexes[i];
+    unsigned int index1 = indexes[i + 1];
+    unsigned int index2 = indexes[i + 2];
 
     Vertex &v0 = this->vertices[index0];
     Vertex &v1 = this->vertices[index1];
     Vertex &v2 = this->vertices[index2];
 
     Triangle tr(v0, v1, v2);
-    triangles.push_back(tr);
+    this->triangles.push_back(tr);
     Vector faceNormal = tr.getTriangleNormal();
 
     this->vertices[index0].normal += faceNormal;
@@ -30,13 +30,9 @@ Mesh::Mesh(const Material &material, const std::vector<Vertex> &vertices, const 
 }
 
 Mesh::Mesh(Mesh &&other) noexcept
-    : material(other.material),
-      vertices{std::move(other.vertices)},
-      indexes{std::move(other.indexes)},
-      triangles{std::move(other.triangles)} {}
+    : material(other.material), vertices{std::move(other.vertices)}, triangles{std::move(other.triangles)} {}
 
-Mesh::Mesh(const Mesh &other)
-    : material(other.material), vertices{other.vertices}, indexes{other.indexes}, triangles{other.triangles} {}
+Mesh::Mesh(const Mesh &other) : material(other.material), vertices{other.vertices}, triangles{other.triangles} {}
 
 Scene::Scene() = default;
 

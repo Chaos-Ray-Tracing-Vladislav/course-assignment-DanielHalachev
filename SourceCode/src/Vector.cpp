@@ -72,6 +72,15 @@ Vector operator*(float lhs, const Vector& rhs) {
   return {lhs * rhs.values[0], lhs * rhs.values[1], lhs * rhs.values[2]};
 }
 
+bool Vector::operator==(const Vector& other) const {
+  for (auto i = 0; i < this->values.size(); i++) {
+    if (this->values[i] != other.values[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::ostream& operator<<(std::ostream& os, const Vector& vector) {
   os << "[" << vector.values[0] << "," << vector.values[1] << "," << vector.values[2] << "]";
   return os;
@@ -121,6 +130,6 @@ Vector Vector::generateRandom() {
 Vector Vector::getVectorSampleOnHemisphere(const float angle1, const float angle2) {
   // angle1 = cos(theta) = y coordinate
   float sinTheta = std::sqrtf(1 - angle1 * angle1);
-  float phi = 2.0f * static_cast<float>(M_PI) * angle2;
+  float phi = 2.0f * M_PIf * angle2;
   return Vector(sinTheta * std::cosf(phi), angle1, sinTheta * std::sinf(phi));
 }

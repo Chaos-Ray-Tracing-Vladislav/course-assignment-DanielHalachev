@@ -26,7 +26,6 @@ class Mesh {
  public:
   const Material &material;
   std::vector<Vertex> vertices;
-  std::vector<unsigned int> indexes;
   std::vector<Triangle> triangles;
 
  public:
