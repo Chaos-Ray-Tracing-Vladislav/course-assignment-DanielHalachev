@@ -34,6 +34,10 @@ const Vector &Triangle::getTriangleNormal() const {
   return this->normal;
 }
 
+const std::array<Vertex *, TRIANGLE_NUM_VERTICES> &Triangle::getVertices() const {
+  return this->vertices;
+}
+
 bool Triangle::pointIsInTriangle(const Vector &point) const {
   Vector e0 = this->vertices[1]->position - this->vertices[0]->position;
   Vector c0 = point - this->vertices[0]->position;
@@ -58,4 +62,16 @@ bool Triangle::pointIsInTriangle(const Vector &point) const {
 
 float Triangle::area() const {
   return this->normal.length() / 2;
+}
+
+std::pair<float, float> Triangle::getBarycentricCoordinates(const Vector &hitPoint) const {
+  float u = 0;
+  float v = 0;
+  Vector v0p = hitPoint - this->vertices[0]->position;
+  Vector v0v1 = this->vertices[1]->position - this->vertices[0]->position;
+  Vector v0v2 = this->vertices[2]->position - this->vertices[0]->position;
+  float area = (v0v1 * v0v2).length();
+  u = (v0p * v0v2).length() / area;
+  v = (v0v1 * v0p).length() / area;
+  return {u, v};
 }

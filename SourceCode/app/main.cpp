@@ -3,13 +3,15 @@
 #include <string>
 
 #include "tracer/RayTracer.h"
+#include "tracer/SceneParser.h"
 
 int main() {
-  for (short i = 0; i < 5; i++) {
+  SceneParser parser;
+  for (short i = 0; i < 1; i++) {
     std::cout << i << '\n';
-    RayTracer tracer("scene" + std::to_string(i) + ".crtscene", "/home/daniel/TexturesHomework");
-    tracer.render();
-    tracer.writePPM("/home/daniel/result" + std::to_string(i) + ".ppm");
+    Scene scene = parser.parseScene("scene" + std::to_string(i) + ".crtscene", "/home/daniel");
+    RayTracer tracer(scene);
+    tracer.render("/home/daniel/result" + std::to_string(i) + ".ppm", RenderOptimization::BucketsThreadPoolAABB);
     std::cout << '\n';
   }
   return 0;

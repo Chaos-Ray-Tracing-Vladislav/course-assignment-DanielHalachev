@@ -3,10 +3,10 @@
 #include <optional>
 
 #include "Vector.h"
-#include "tracer/Material.h"
 #include "tracer/Triangle.h"
 
 struct Intersection {
+  float distance;
   Vector hitPoint;
   Vector hitNormal;
 
@@ -29,6 +29,5 @@ class Ray {
   Ray(const Vector &origin, const Vector &direction, const RayType &rayType = PrimaryRay);
 
   // TODO (maybe move to Triangle.h)
-  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle, const MaterialType = Diffuse,
-                                                    const bool smoothShading = false) const;
+  std::optional<Intersection> intersectWithTriangle(const Triangle &triangle) const;
 };
