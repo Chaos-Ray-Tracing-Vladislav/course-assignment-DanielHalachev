@@ -2,11 +2,13 @@
 #include <atomic>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "tracer/Ray.h"
 #include "tracer/Scene.h"
 #include "tracer/Vector.h"
+#include "tree/AccelerationStructure.h"
 #include "tree/KDTree.h"
 
 typedef Vector ColorVector;
@@ -28,8 +30,12 @@ enum RenderOptimization {
   BucketsQueue,
   AABB,
   BucketsThreadPoolAABB,
-  BucketsQueueAABB
+  BucketsQueueAABB,
+  BHV,
+  BHVBucketsThreadPool
 };
+
+enum BoundingBoxType { SingleBoundingBox, Tree };
 
 class RayTracer {
  private:
@@ -37,22 +43,25 @@ class RayTracer {
   static thread_local std::uniform_real_distribution<float> distribution;
 
   BoundingBox boundingBox;
-  Scene& scene;
+  AccelerationStructure accelerationStructure;
+  bool useBounding = true;
+  enum BoundingBoxType boundingType = SingleBoundingBox;
+  Scene scene;
   std::vector<std::vector<Color>> colorBuffer;
+  unsigned short threadCount = std::thread::hardware_concurrency();
   unsigned short rectangleCount = 1;
   std::atomic_ushort rectanglesDone = 0;
 
   void printProgress(double percentage);
   Ray getRay(unsigned int pixelRow, unsigned int pixelCol) const;
-  Color shootRay(const Ray &ray, const unsigned int depth = 0) const;
+  Color shootRay(const Ray &ray, const unsigned int depth = 0);
   Color shade(const Ray &ray) const;
   std::optional<IntersectionInformation> trace(const Ray &ray) const;
   bool hasIntersection(const Ray &ray, const float distanceToLight) const;
   void renderRectangle(unsigned int rowIndex, unsigned int colIndex, unsigned int width, unsigned int height);
-  void renderRectangleAABB(unsigned int rowIndex, unsigned int colIndex, unsigned int width, unsigned int height);
-  void renderRegions(bool useBoundingBox);
-  void renderBucketsThreadpool(bool useBoundingBox);
-  void renderBucketsQueue(bool useBoundingBox);
+  void renderRegions();
+  void renderBucketsThreadpool();
+  void renderBucketsQueue();
 
  public:
   explicit RayTracer(Scene &scene);
