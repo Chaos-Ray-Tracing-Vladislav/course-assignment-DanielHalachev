@@ -3,15 +3,15 @@
 #include <optional>
 
 #include "Vector.h"
+#include "tracer/Material.h"
 #include "tracer/Triangle.h"
-#include "tracer/Utils.h"
 
 struct Intersection {
   Vector hitPoint;
   Vector hitNormal;
 
 // Ugly, I know :-D
-#if defined(BARYCENTRIC) && BARYCENTRIC
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
   float u;
   float v;
 #endif  // BARYCENTRIC

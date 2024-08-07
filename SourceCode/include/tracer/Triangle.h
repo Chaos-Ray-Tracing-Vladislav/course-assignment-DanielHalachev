@@ -1,11 +1,9 @@
 #pragma once
 #include <array>
 
-#include "Vector.h"
+#include "Vertex.h"
 
 #define TRIANGLE_NUM_VERTICES 3
-
-struct Light;
 
 class Triangle {
  private:

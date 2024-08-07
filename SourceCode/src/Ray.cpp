@@ -1,12 +1,6 @@
-#include <tracer/Ray.h>
+#include "tracer/Ray.h"
 
-// #include <limits>
-#include <cmath>
 #include <optional>
-
-#include "tracer/Triangle.h"
-#include "tracer/Utils.h"
-#include "tracer/Vector.h"
 
 Ray::Ray() = default;
 Ray::Ray(const Vector &origin, const Vector &direction, const RayType &rayType)
@@ -36,8 +30,12 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   if (!triangle.pointIsInTriangle(intersectionPoint)) {
     return {};
   }
-
   Vector hitNormal = triangleNormal;
+
+// if we calculate barycentric colors or use textures, we need
+// to calculate U and V and pass them to the structure
+// otherwise, we only need to calculate U and V for smooth shading and we don't pass them
+#if (defined(BARYCENTRIC) && BARYCENTRIC) || (defined(USE_TEXTURES) && USE_TEXTURES)
   float u = 0;
   float v = 0;
   Vector v0p = intersectionPoint - triangle[0].position;
@@ -50,9 +48,19 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
     hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
     hitNormal.normalize();
   }
-
-#if defined(BARYCENTRIC) && BARYCENTRIC
   return Intersection{intersectionPoint, hitNormal, u, v};
-#endif  // BARYCENTRIC
+#else
+  if (smoothShading) {
+    Vector v0p = intersectionPoint - triangle[0].position;
+    Vector v0v1 = triangle[1].position - triangle[0].position;
+    Vector v0v2 = triangle[2].position - triangle[0].position;
+    float area = (v0v1 * v0v2).length();
+    float u = (v0p * v0v2).length() / area;
+    float v = (v0v1 * v0p).length() / area;
+    hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
+    hitNormal.normalize();
+  }
+
   return Intersection{intersectionPoint, hitNormal};
+#endif  // BARYCENTRIC || USE_TEXTURES
 }
