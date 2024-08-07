@@ -14,13 +14,15 @@ struct PPMColor {
   friend std::ostream &operator<<(std::ostream &os, const struct PPMColor &color);
 };
 
-enum MaterialType { Diffuse, Reflect };
+enum MaterialType { Diffuse, Reflective, Constant, Refractive };
 
 struct Material {
   Albedo albedo;
   MaterialType type;
   bool smoothShading;
+  float ior;
 
   Material();
-  explicit Material(const Albedo &albedo, const MaterialType &type = Diffuse, const bool smoothShading = false);
+  explicit Material(const Albedo &albedo, const MaterialType &type = Diffuse, const bool smoothShading = false,
+                    const float ior = 1.0f);
 };

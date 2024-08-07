@@ -4,7 +4,6 @@
 #include "Vector.h"
 
 #define TRIANGLE_NUM_VERTICES 3
-#define SHADOW_BIAS 0.0001f
 
 struct Light;
 

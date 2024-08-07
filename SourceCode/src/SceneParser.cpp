@@ -24,6 +24,7 @@ const char* SceneParser::MATERIAL_INDEX = "material_index";
 const char* SceneParser::MATERIAL_TYPE = "type";
 const char* SceneParser::MATERIAL_ALBEDO = "albedo";
 const char* SceneParser::MATERIAL_SHADING = "smooth_shading";
+const char* SceneParser::MATERIAL_IOR = "ior";
 const char* SceneParser::LIGHTS = "lights";
 const char* SceneParser::LIGHT_INTENSITY = "intensity";
 const char* SceneParser::POSITION = "position";
@@ -140,19 +141,31 @@ std::vector<Material> SceneParser::parseMaterials(const rapidjson::Document& doc
       assert(!materialTypeValue.IsNull() && materialTypeValue.IsString());
       const char* materialTypeString = materialTypeValue.GetString();
       MaterialType materialType;
+      float IOR = 0;
+      Albedo albedo(0, 0, 0);
+
       if (strcmp(materialTypeString, "diffuse") == 0) {
         materialType = Diffuse;
       } else if (strcmp(materialTypeString, "reflective") == 0) {
-        materialType = Reflect;
+        materialType = Reflective;
+      } else if (strcmp(materialTypeString, "refractive") == 0) {
+        materialType = Refractive;
+        const rapidjson::Value& materialIORValue = material.FindMember(SceneParser::MATERIAL_IOR)->value;
+        assert(!materialIORValue.IsNull() && materialIORValue.IsFloat());
+        IOR = materialIORValue.GetFloat();
+      } else if (strcmp(materialTypeString, "constant") == 0) {
+        materialType = Constant;
       } else {
         throw "Invalid material";
       }
-      const rapidjson::Value& materialAlbedoValue = material.FindMember(SceneParser::MATERIAL_ALBEDO)->value;
-      assert(!materialAlbedoValue.IsNull() && materialAlbedoValue.IsArray());
+      if (materialType != Refractive) {
+        const rapidjson::Value& materialAlbedoValue = material.FindMember(SceneParser::MATERIAL_ALBEDO)->value;
+        assert(!materialAlbedoValue.IsNull() && materialAlbedoValue.IsArray());
+        albedo = Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3));
+      }
       const rapidjson::Value& materialShadingValue = material.FindMember(SceneParser::MATERIAL_SHADING)->value;
       assert(!materialShadingValue.IsNull() && materialShadingValue.IsBool());
-      Material temp(Albedo(loadFloatSTLVector(materialAlbedoValue.GetArray(), 3)), materialType,
-                    materialShadingValue.GetBool());
+      Material temp(albedo, materialType, materialShadingValue.GetBool(), IOR);
       materials.push_back(temp);
     }
   }

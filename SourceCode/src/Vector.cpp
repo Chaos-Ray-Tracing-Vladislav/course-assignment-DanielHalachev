@@ -117,3 +117,10 @@ Vector Vector::generateRandom() {
   std::mt19937 rng(std::random_device{}());
   return Vector(distribution(rng), distribution(rng), distribution(rng));
 }
+
+Vector Vector::getVectorSampleOnHemisphere(const float angle1, const float angle2) {
+  // angle1 = cos(theta) = y coordinate
+  float sinTheta = std::sqrtf(1 - angle1 * angle1);
+  float phi = 2.0f * static_cast<float>(M_PI) * angle2;
+  return Vector(sinTheta * std::cosf(phi), angle1, sinTheta * std::sinf(phi));
+}

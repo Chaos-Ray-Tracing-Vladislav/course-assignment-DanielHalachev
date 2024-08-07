@@ -1,20 +1,27 @@
 #include <tracer/Ray.h>
 
 // #include <limits>
+#include <cmath>
 #include <optional>
 
 #include "tracer/Triangle.h"
+#include "tracer/Utils.h"
 #include "tracer/Vector.h"
 
 Ray::Ray() = default;
 Ray::Ray(const Vector &origin, const Vector &direction, const RayType &rayType)
     : origin(origin), direction(direction), rayType(rayType){};
 
-std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const bool smoothShading) const {
+std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle, const MaterialType materialType,
+                                                       const bool smoothShading) const {
   Vector triangleNormal = triangle.getTriangleNormal();
   float normalDotRayDirection = this->direction.dot(triangleNormal);
 
-  if (this->rayType == Primary && normalDotRayDirection == 0) {
+  // material shouldn't be refractive, because refraction direction doesn't matter for intersection
+  // its debatable whether it should be reflective
+  if (this->rayType == PrimaryRay && normalDotRayDirection >= 0
+      // std::fabs(normalDotRayDirection) < std::numeric_limits<float>::epsilon()  //
+  ) {
     return {};
   }
 
@@ -41,6 +48,7 @@ std::optional<Intersection> Ray::intersectWithTriangle(const Triangle &triangle,
   v = (v0v1 * v0p).length() / area;
   if (smoothShading) {
     hitNormal = (triangle[1].normal * u + triangle[2].normal * v + triangle[0].normal * (1 - u - v));
+    hitNormal.normalize();
   }
 
 #if defined(BARYCENTRIC) && BARYCENTRIC

@@ -19,6 +19,7 @@ class SceneParser {
   static const char* MATERIAL_TYPE;
   static const char* MATERIAL_ALBEDO;
   static const char* MATERIAL_SHADING;
+  static const char* MATERIAL_IOR;
   static const char* LIGHTS;
   static const char* LIGHT_INTENSITY;
   static const char* POSITION;

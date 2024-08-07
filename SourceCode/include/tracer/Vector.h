@@ -26,6 +26,7 @@ class Vector {
   float length() const;
   Vector reflect(const Vector &normal) const;
   static Vector generateRandom();
+  static Vector getVectorSampleOnHemisphere(const float angle1, const float angle2);
 };
 
 class Vertex {
